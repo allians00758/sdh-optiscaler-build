@@ -18,7 +18,7 @@ files = {
 contents={k:v.read_text(encoding='utf-8') for k,v in files.items()}
 checks={
     'api': ['#define OPTI_PLUGIN_API_VERSION 2','QueueSdhControl','PollSdhControl','SnapshotSdhControl'],
-    'provider': ['SdhQueue(', 'SdhPoll(', 'SdhSnapshot(', 'SdhLiveRenderTick(', 'apply_stage=renderer_reinit_requested', 'tick_source_code='],
+    'provider': ['SdhQueue(', 'SdhPoll(', 'SdhSnapshot(', 'SdhLiveRenderTick(', 'apply_stage=renderer_reinit_requested', 'tick_source_code=', 'active_backend=', 'has_shader', 'SdhChooseFfxVersion', 'has_upscaler', 'requires_restart_fg_pipeline'],
     'impl': ['#include "SDHLiveControl.inc"', '.QueueSdhControl = SdhQueue', '.PollSdhControl = SdhPoll', '.SnapshotSdhControl = SdhSnapshot', 'void PluginApi::SdhLiveTick(uint32_t source)'],
     'impl_h': ['static void SdhLiveTick(uint32_t source);'],
     'dx': ['#include "plugins/PluginApi.h"', 'PluginApi::SdhLiveTick(1);'],
