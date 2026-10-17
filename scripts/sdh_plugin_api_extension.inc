@@ -315,7 +315,7 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
         }
         if(wantsFsr4Preset) {
             auto preset=SdhNormalize(SdhFirst(vals,{"fsr4_preset","preset"}));
-            if(preset=="auto" || preset=="default" || preset=="-1") fsr4Preset=-1;
+            if(preset=="auto" || preset=="default" || preset.empty()) fsr4Preset=-1;
             else if(preset.size()==1 && preset[0]>='0' && preset[0]<='5')
                 fsr4Preset=preset[0]-'0';
             else if(preset.size()==7 && preset.rfind("preset",0)==0 &&
