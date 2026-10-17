@@ -34,4 +34,17 @@ for k,needles in checks.items():
 p=contents['provider']
 assert p.index('std::string snapshot="capabilities=') < p.index('snapshot+="ffx_versions_count="'), 'FFX diagnostics refer to an undeclared snapshot'
 assert 'snapshot+="\\\\n";' not in p, 'Incorrect escaped newline in FFX version list'
+# Regression cases confirmed by the Deck runtime control-state log:
+# capabilities contained ffx2, but upscaler=fsr2.3 failed
+# invalid_or_unsupported_backend before reaching the FFX resolver.
+import re
+dispatch_match = re.search(r'const bool isVersionedFfx\\s*=\\s*\\(.*?\\);', p, re.S)
+assert dispatch_match is not None, 'Missing versioned FFX dispatch expression'
+dispatch = dispatch_match.group(0)
+assert 'code.rfind("fsr2.3",0)==0' in dispatch, 'FSR 2.3 bypasses the versioned FFX resolver'
+assert 'code.rfind("fsr3",0)==0' in dispatch, 'FSR 3.x bypasses the versioned FFX resolver'
+assert 'code.rfind("fsr4",0)==0' in dispatch, 'FSR 4.x bypasses the versioned FFX resolver'
+assert 'code.find(\'.\')==std::string::npos' in p, 'Dotted FSR 3.1 is rewritten as legacy fsr31'
+assert 'SdhChooseFfxVersion(state,state.api,code,ffxVersion)' in p, 'Missing FFX index resolution'
+assert 'backend=(state.api==DX11)?Upscaler::FFX_on12:Upscaler::FFX' in p, 'Missing FFX backend selection'
 print('PASS: SDH Live API v2 integration source markers verified.')
