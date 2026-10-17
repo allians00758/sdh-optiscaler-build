@@ -10,6 +10,7 @@ static std::mutex sdh_live_mutex;
 static std::deque<SdhPending> sdh_pending;
 static std::map<uint64_t, std::string> sdh_results;
 static std::atomic<uint64_t> sdh_core_tick {0};
+static std::atomic<uint32_t> sdh_tick_source {0};
 static std::string sdh_last_render_snapshot;
 
 static std::map<std::string,std::string> SdhParse(std::string_view input) {
@@ -68,6 +69,7 @@ static uint32_t SdhPoll(OptiPlugin* plugin,uint64_t seq,char* output,uint32_t ca
 static uint32_t SdhSnapshot(OptiPlugin* plugin,char* output,uint32_t cap){
     if(!plugin||!output||cap<128)return 0;
     std::string result="core_tick="+std::to_string(sdh_core_tick.load(std::memory_order_acquire))+"\n";
+    result+="tick_source_code="+std::to_string(sdh_tick_source.load(std::memory_order_acquire))+"\n";
     {
         // Read cached values only: live Config must not be read off render thread.
         std::lock_guard<std::mutex> lock(sdh_live_mutex);
@@ -147,7 +149,8 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
     // definitively recreated; expose requested recreation separately.
     return recreate?"ok=1\napply_stage=renderer_reinit_requested\n":"ok=1\napply_stage=render_config_updated\n";
 }
-static void SdhLiveRenderTick(){
+static void SdhLiveRenderTick(uint32_t source){
+    sdh_tick_source.store(source,std::memory_order_release);
     auto tick=sdh_core_tick.fetch_add(1,std::memory_order_release)+1;
     if(tick%3==0){
         if(auto* cfg=Config::Instance()){
