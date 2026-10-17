@@ -37,10 +37,8 @@ assert 'snapshot+="\\\\n";' not in p, 'Incorrect escaped newline in FFX version 
 # Regression cases confirmed by the Deck runtime control-state log:
 # capabilities contained ffx2, but upscaler=fsr2.3 failed
 # invalid_or_unsupported_backend before reaching the FFX resolver.
-import re
-dispatch_match = re.search(r'const bool isVersionedFfx\\s*=\\s*\\(.*?\\);', p, re.S)
-assert dispatch_match is not None, 'Missing versioned FFX dispatch expression'
-dispatch = dispatch_match.group(0)
+start = p.index('const bool isVersionedFfx=')
+dispatch = p[start:p.index(';', start)]
 assert 'code.rfind("fsr2.3",0)==0' in dispatch, 'FSR 2.3 bypasses the versioned FFX resolver'
 assert 'code.rfind("fsr3",0)==0' in dispatch, 'FSR 3.x bypasses the versioned FFX resolver'
 assert 'code.rfind("fsr4",0)==0' in dispatch, 'FSR 4.x bypasses the versioned FFX resolver'
