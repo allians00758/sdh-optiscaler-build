@@ -32,7 +32,17 @@ for k,needles in checks.items():
         if needle not in contents[k]:
             raise SystemExit(f'Missing {needle!r} in {files[k]}')
 p=contents['provider']
-assert p.index('std::string snapshot="capabilities=') < p.index('snapshot+="ffx_versions_count="'), 'FFX diagnostics refer to an undeclared snapshot'
+# Regression: DEV17 interleaved ffx_versions_count into the capabilities
+# header, hiding fsr4_color_space and fsr4_preset from Decky. Finish the
+# capabilities line (including dynamic FSR4/FFX2 flags) BEFORE diagnostics.
+cap_start = p.index('std::string snapshot="capabilities=')
+cap_fsr4 = p.index('if(fsr4Active)snapshot+=",fsr4_color_space,fsr4_preset";', cap_start)
+cap_ffx2 = p.index('if(hasFfx2)snapshot+=",ffx2";', cap_fsr4)
+cap_terminator = p.index(r'snapshot+="\\n";', cap_ffx2)
+ffx_diagnostics = p.index('snapshot+="ffx_versions_count="', cap_start)
+assert cap_start < cap_fsr4 < cap_ffx2 < cap_terminator < ffx_diagnostics, (
+    'FFX diagnostics must not appear inside the capabilities header'
+)
 assert 'snapshot+="\\\\n";' not in p, 'Incorrect escaped newline in FFX version list'
 # Regression cases confirmed by the Deck runtime control-state log:
 # capabilities contained ffx2, but upscaler=fsr2.3 failed
