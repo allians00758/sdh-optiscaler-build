@@ -9,7 +9,8 @@ files = {
     'provider': src/'OptiScaler/plugins/SDHLiveControl.inc',
     'impl': src/'OptiScaler/plugins/PluginApi.cpp',
     'impl_h': src/'OptiScaler/plugins/PluginApi.h',
-    'menu': src/'OptiScaler/menu/menu_common.cpp',
+    'dx': src/'OptiScaler/menu/menu_overlay_dx.cpp',
+    'vk': src/'OptiScaler/menu/menu_overlay_vk.cpp',
 }
 contents={k:v.read_text(encoding='utf-8') for k,v in files.items()}
 checks={
@@ -17,7 +18,8 @@ checks={
     'provider': ['SdhQueue(', 'SdhPoll(', 'SdhSnapshot(', 'SdhLiveRenderTick(', 'apply_stage=renderer_reinit_requested'],
     'impl': ['#include "SDHLiveControl.inc"', '.QueueSdhControl = SdhQueue', '.PollSdhControl = SdhPoll', '.SnapshotSdhControl = SdhSnapshot', 'void PluginApi::SdhLiveTick()'],
     'impl_h': ['static void SdhLiveTick();'],
-    'menu': ['PluginApi::SdhLiveTick();'],
+    'dx': ['#include "plugins/PluginApi.h"', '    PluginApi::SdhLiveTick();\n    if (!Config::Instance()->OverlayMenu'],
+    'vk': ['#include "plugins/PluginApi.h"', 'PluginApi::SdhLiveTick();\n    LOG_FUNC();'],
 }
 for k,needles in checks.items():
     for needle in needles:
