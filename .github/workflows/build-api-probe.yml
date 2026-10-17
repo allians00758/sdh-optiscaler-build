@@ -15,7 +15,9 @@ jobs:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
-      - uses: microsoft/setup-msbuild@v2
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
       - name: Compile diagnostic Windows x64 ASI
         shell: pwsh
         run: |
