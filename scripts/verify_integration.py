@@ -38,7 +38,7 @@ p=contents['provider']
 cap_start = p.index('std::string snapshot="capabilities=')
 cap_fsr4 = p.index('if(fsr4Active)snapshot+=",fsr4_color_space,fsr4_preset";', cap_start)
 cap_ffx2 = p.index('if(hasFfx2)snapshot+=",ffx2";', cap_fsr4)
-cap_terminator = p.index(r'snapshot+="\\n";', cap_ffx2)
+cap_terminator = p.index(r'snapshot+="\n";', cap_ffx2)
 ffx_diagnostics = p.index('snapshot+="ffx_versions_count="', cap_start)
 assert cap_start < cap_fsr4 < cap_ffx2 < cap_terminator < ffx_diagnostics, (
     'FFX diagnostics must not appear inside the capabilities header'
