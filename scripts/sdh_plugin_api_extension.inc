@@ -387,6 +387,18 @@ static void SdhLiveRenderTick(uint32_t source){
             }
             snapshot+="fg_input_active="+std::to_string(static_cast<int>(state.activeFgInput))+"\n";
             snapshot+="fg_output_active="+std::to_string(static_cast<int>(state.activeFgOutput))+"\n";
+            // Requested pipeline vs actual initialized pipeline are distinct.
+            const auto requestedFgInput=cfg->FGInput.value_or_default();
+            const auto requestedFgOutput=cfg->FGOutput.value_or_default();
+            snapshot+="fg_input_config="+std::to_string(static_cast<int>(requestedFgInput))+"\n";
+            snapshot+="fg_output_config="+std::to_string(static_cast<int>(requestedFgOutput))+"\n";
+            snapshot+="fg_pipeline_matches_config="+std::to_string((int)(
+                requestedFgInput==state.activeFgInput && requestedFgOutput==state.activeFgOutput))+"\n";
+            snapshot+="fg_pipeline_restart_needed="+std::to_string((int)(
+                requestedFgInput!=state.activeFgInput || requestedFgOutput!=state.activeFgOutput))+"\n";
+            snapshot+="fg_runtime_object="+std::to_string((int)(state.CurrentFG()!=nullptr))+"\n";
+            snapshot+="fg_runtime_active="+std::to_string((int)(
+                state.CurrentFG()!=nullptr && state.CurrentFG()->IsActive()))+"\n";
             std::lock_guard<std::mutex> lock(sdh_live_mutex);
             sdh_last_render_snapshot=std::move(snapshot);
         }
