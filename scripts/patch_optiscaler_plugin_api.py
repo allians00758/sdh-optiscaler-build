@@ -13,9 +13,8 @@ root=Path(args.source).expanduser().resolve()
 api=root/'plugin_sdk/optiscaler_plugin.h'
 impl=root/'OptiScaler/plugins/PluginApi.cpp'
 header=root/'OptiScaler/plugins/PluginApi.h'
-dx=root/'OptiScaler/menu/menu_overlay_dx.cpp'
-vk=root/'OptiScaler/menu/menu_overlay_vk.cpp'
-for p in (api,impl,header,dx,vk):
+menu=root/'OptiScaler/menu/menu_common.cpp'
+for p in (api,impl,header,menu):
     if not p.is_file():raise SystemExit(f'Missing file: {p}. Use upstream plugin-api branch, not master.')
 if (root/'OptiScaler/plugins/SDHLiveControl.inc').exists():
     raise SystemExit('Already patched or a pre-existing custom SDHLiveControl.inc exists.')
@@ -48,19 +47,13 @@ c=once(c,'} // namespace\n\nvoid PluginApi::InitPlugin','} // namespace\n\nvoid 
 h=header.read_text(encoding='utf-8')
 h=once(h,'  public:\n    struct TabInfo','  public:\n    static void SdhLiveTick();\n\n    struct TabInfo',header)
 
-# Tick at actual DXGI/Vulkan presentation, even with the overlay enabled.
-# MenuCommon::Present() is not used on that active-overlay path.
-d=dx.read_text(encoding='utf-8')
-d=once(d, '#include "menu_common.h"', '#include "menu_common.h"\n#include "plugins/PluginApi.h"',dx)
-d=once(d, '    if (!Config::Instance()->OverlayMenu.value_or_default())\n    {\n        MenuOverlayBase::Present();', '    PluginApi::SdhLiveTick();\n    if (!Config::Instance()->OverlayMenu.value_or_default())\n    {\n        MenuOverlayBase::Present();', dx)
-v=vk.read_text(encoding='utf-8')
-v=once(v, '#include "menu_common.h"', '#include "menu_common.h"\n#include "plugins/PluginApi.h"',vk)
-v=once(v, 'bool MenuOverlayVk::QueuePresent(VkQueue queue, VkPresentInfoKHR* pPresentInfo)\n{\n    LOG_FUNC();','bool MenuOverlayVk::QueuePresent(VkQueue queue, VkPresentInfoKHR* pPresentInfo)\n{\n    PluginApi::SdhLiveTick();\n    LOG_FUNC();',vk)
+m=menu.read_text(encoding='utf-8')
+m=once(m,'void MenuCommon::Present()\n{\n    _frameCount++;','void MenuCommon::Present()\n{\n    _frameCount++;\n    PluginApi::SdhLiveTick();',menu)
 
-stages={api:a,impl:c,header:h,dx:d,vk:v}
+stages={api:a,impl:c,header:h,menu:m}
 for p in stages:
     shutil.copy2(p,p.with_suffix(p.suffix+'.sdh-live-backup'))
 for p,t in stages.items():p.write_text(t,encoding='utf-8')
 shutil.copy2(Path(__file__).with_name('sdh_plugin_api_extension.inc'),root/'OptiScaler/plugins/SDHLiveControl.inc')
-print('Patched 5 upstream files (DXGI/Vulkan Present); installed SDHLiveControl.inc')
+print('Patched 4 upstream files; installed OptiScaler/plugins/SDHLiveControl.inc')
 print('Build OptiScaler using its official MSVC/CMake Windows x64 build instructions.')
