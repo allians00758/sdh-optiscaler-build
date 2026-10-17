@@ -1,0 +1,45 @@
+name: Build standalone SDH Plugin API probe
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - diagnostics/sdh-live-api-probe.cpp
+      - .github/workflows/build-api-probe.yml
+
+permissions:
+  contents: write
+
+jobs:
+  probe:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Compile diagnostic Windows x64 ASI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force diagnostics | Out-Null
+          & cl.exe /nologo /W3 /O2 /MD /LD /EHsc diagnostics\sdh-live-api-probe.cpp /link /OUT:diagnostics\sdh-live-api-probe.asi
+          if ($LASTEXITCODE -ne 0) { throw "MSVC compile failed" }
+          if (!(Test-Path "diagnostics/sdh-live-api-probe.asi")) { throw "ASI missing" }
+          Get-FileHash -Algorithm SHA256 "diagnostics/sdh-live-api-probe.asi"
+      - name: Commit diagnostic ASI to repository
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f diagnostics/sdh-live-api-probe.asi
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+             git commit -m "Build SDH Plugin API diagnostic ASI"
+             if ($LASTEXITCODE -ne 0) { throw "Commit failed" }
+             git push origin HEAD:main
+             if ($LASTEXITCODE -ne 0) { throw "Push failed" }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdh-live-api-probe
+          path: diagnostics/sdh-live-api-probe.asi
+          if-no-files-found: error
