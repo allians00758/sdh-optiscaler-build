@@ -457,6 +457,16 @@ static void SdhLiveRenderTick(uint32_t source){
             auto& state=State::Instance();
             snapshot+="active_backend="+(state.currentFeature ?
                 UpscalerToCode(state.currentFeature->GetUpscalerType()):std::string("none"))+"\n";
+            // Read the actual instantiated FFX version, not the requested
+            // Config index. The selected index can change before reinit.
+            if(state.currentFeature &&
+               (state.currentFeature->GetUpscalerType()==Upscaler::FFX ||
+                state.currentFeature->GetUpscalerType()==Upscaler::FFX_on12)){
+                auto version=state.currentFeature->Version();
+                snapshot+="active_ffx_version="+std::to_string(version.major)+"."+
+                    std::to_string(version.minor)+"."+std::to_string(version.patch)+"\n";
+            }
+
             snapshot+="requested_backend="+UpscalerToCode(state.newBackend)+"\n";
             if(state.currentFeature && (state.currentFeature->GetUpscalerType()==Upscaler::FFX ||
                                         state.currentFeature->GetUpscalerType()==Upscaler::FFX_on12)){

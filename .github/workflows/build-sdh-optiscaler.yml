@@ -77,7 +77,7 @@ jobs:
           New-Item -ItemType Directory -Force out | Out-Null
           Copy-Item $dll 'out/dxgi.dll'
           @"
-          SDH OptiScaler 10 Live Control API v2 - DEV12 test DLL
+          SDH OptiScaler 10 Live Control API v2 - DEV13 test DLL
           Upstream: https://github.com/optiscaler/OptiScaler
           Source SHA: ${{ steps.base.outputs.upstream_sha }}
           Target: Windows x64; UNSIGNED TEST BUILD
@@ -91,7 +91,7 @@ jobs:
       - name: Upload compiled artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SDH-OptiScaler10-LiveAPI-DEV12-${{ github.sha }}
+          name: SDH-OptiScaler10-LiveAPI-DEV13-${{ github.sha }}
           path: out/
           if-no-files-found: error
           retention-days: 14
