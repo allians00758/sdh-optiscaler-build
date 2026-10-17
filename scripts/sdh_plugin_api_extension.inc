@@ -119,6 +119,16 @@ static bool SdhBackendAllowed(Upscaler backend, API api) {
     default: return false;
     }
 }
+// FFX SDK versionNames can include an FSR/AMD name prefix rather than
+// starting with the numeric version. Compare the reported implementation
+// version, not a hard-coded assumed list index.
+static std::string SdhFfxVersionNumber(const char* raw) {
+    if(!raw)return "";
+    std::string name=SdhLower(raw);
+    const auto digit=name.find_first_of("0123456789");
+    if(digit==std::string::npos)return "";
+    return name.substr(digit);
+}
 static bool SdhChooseFfxVersion(const State& state, API api, std::string requested, int& selected) {
     // No fixed memory signatures: query the live FFX version list provided by OptiScaler.
     const auto& versions=(api==Vulkan)?state.ffxUpscalerVersionsVk:state.ffxUpscalerVersionsDx12;
@@ -131,7 +141,7 @@ static bool SdhChooseFfxVersion(const State& state, API api, std::string request
     std::string best;
     for(size_t i=0;i<versions.names.size();++i) {
         if(!versions.names[i])continue;
-        std::string item=SdhLower(versions.names[i]);
+        std::string item=SdhFfxVersionNumber(versions.names[i]);
         if(item.rfind(version,0)!=0)continue;
         // Prefer highest reported version for an unqualified request.
         if(selected<0 || item>best) { selected=static_cast<int>(i);best=item; }
@@ -414,7 +424,25 @@ static void SdhLiveRenderTick(uint32_t source){
             const auto& candidates=(current.api==Vulkan)?current.ffxUpscalerVersionsVk:current.ffxUpscalerVersionsDx12;
             bool hasFfx2=false;
             for(const auto* name:candidates.names){
-                if(name && std::string_view(name).rfind("2.3",0)==0){hasFfx2=true;break;}
+                if(name && SdhFfxVersionNumber(name).rfind("2.3",0)==0){hasFfx2=true;break;}
+            }
+            // Observe the versions OptiScaler's running FFX SDK really exposed.
+            // This is the decisive diagnostic for 3.1.5/2.3.4 missing live.
+            {
+                const auto& ffx=(current.api==Vulkan)?current.ffxUpscalerVersionsVk:current.ffxUpscalerVersionsDx12;
+                snapshot+="ffx_versions_count="+std::to_string(ffx.names.size())+"\n";
+                snapshot+="ffx_available_versions=";
+                size_t count=0;
+                for(const char* name:ffx.names) {
+                    if(!name || count>=10)continue;
+                    auto version=SdhFfxVersionNumber(name);
+                    if(version.empty() || version.size()>32)continue;
+                    if(count++)snapshot+=",";
+                    snapshot+=version;
+                }
+                snapshot+="\\n";
+                snapshot+="ffx_selected_index="+std::to_string(cfg->FfxUpscalerIndex.value_or_default())+"\n";
+                snapshot+="graphics_api="+std::to_string(static_cast<int>(current.api))+"\n";
             }
             std::string snapshot="capabilities=sharpness,contrast,motion_sharpness,fg_enabled,quality,scale,shader,backend,latencyflex_mode";
             const bool fsr4Active=(current.currentFeature &&
