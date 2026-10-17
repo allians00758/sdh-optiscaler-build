@@ -79,7 +79,9 @@ static std::string SdhRequestDebug(const std::map<std::string,std::string>& vals
                       key.find("upscal")!=std::string::npos ||
                       key.find("backend")!=std::string::npos ||
                       key.find("latency")!=std::string::npos ||
-                      key.find("barrier")!=std::string::npos;
+                      key.find("barrier")!=std::string::npos ||
+                      key.find("color_space")!=std::string::npos ||
+                      key.find("fsr4_preset")!=std::string::npos;
         if(!relevant || key.rfind("has_",0)==0)continue;
         std::string cleaned;
         for(unsigned char c:val) if(c>=32 && c<127 && c!=';' && c!='=')
@@ -174,7 +176,7 @@ static uint32_t SdhSnapshot(OptiPlugin* plugin,char* output,uint32_t cap){
 static std::string SdhApplyOnRenderThread(std::string_view command){
     auto vals=SdhParse(command);
     // An unrecognized has_* flag must fail the whole command, never fake success.
-    constexpr std::string_view flags[]={"has_sharpness","has_contrast","has_motion_sharpness", "has_fg_enabled","has_quality","has_scale","has_shader","has_backend","has_upscaler","has_upscaler_backend","has_fg_input","has_fg_output","has_latencyflex_mode","has_resource_barrier_fix"};
+    constexpr std::string_view flags[]={"has_sharpness","has_contrast","has_motion_sharpness", "has_fg_enabled","has_quality","has_scale","has_shader","has_backend","has_upscaler","has_upscaler_backend","has_fg_input","has_fg_output","has_latencyflex_mode","has_resource_barrier_fix","has_color_space","has_fsr4_preset"};
     bool requested=false;
     {
         std::string names;
@@ -294,6 +296,36 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
             latencyMode=LFXMode::ReflexIDs;
         else return "ok=0\nerror=invalid_latencyflex_mode\n";
     }
+
+    // OptiScaler's FSR 4 menu only exposes these controls for a running
+    // FFX feature reporting major version >=4. Reject old FSR backends.
+    const bool wantsFsr4Space=SdhFlag(vals,"has_color_space");
+    const bool wantsFsr4Preset=SdhFlag(vals,"has_fsr4_preset");
+    std::string fsr4Space;
+    int fsr4Preset=-1; // -1 is default / unset
+    if(wantsFsr4Space || wantsFsr4Preset) {
+        if(!state.currentFeature ||
+           (state.currentFeature->GetUpscalerType()!=Upscaler::FFX &&
+            state.currentFeature->GetUpscalerType()!=Upscaler::FFX_on12) ||
+           state.currentFeature->Version().major<4)
+            return "ok=0\nerror=fsr4_renderer_not_active\n";
+        if(wantsFsr4Space) {
+            fsr4Space=SdhNormalize(SdhFirst(vals,{"color_space","fsr4_color_space"}));
+            if(fsr4Space!="auto" && fsr4Space!="linear" &&
+               fsr4Space!="nonlinear" && fsr4Space!="srgb" && fsr4Space!="pq")
+                return "ok=0\nerror=invalid_fsr4_color_space\n";
+        }
+        if(wantsFsr4Preset) {
+            auto preset=SdhNormalize(SdhFirst(vals,{"fsr4_preset","preset"}));
+            if(preset=="auto" || preset=="default" || preset.empty()) fsr4Preset=-1;
+            else if(preset.size()==1 && preset[0]>='0' && preset[0]<='5')
+                fsr4Preset=preset[0]-'0';
+            else if(preset.size()==7 && preset.rfind("preset",0)==0 &&
+                    preset[6]>='0' && preset[6]<='5')
+                fsr4Preset=preset[6]-'0';
+            else return "ok=0\nerror=invalid_fsr4_preset\n";
+        }
+    }
     // All validation precedes mutation: a failed command changes nothing.
     auto* cfg=Config::Instance();
     if(!cfg)return "ok=0\nerror=config_unavailable\n";
@@ -321,7 +353,25 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
         cfg->RcasEnabled=shaderOn;
         if(shaderOn)cfg->SharpnessShader=shader;
     }
-    bool recreate=false;
+    bool recreate=wantsFsr4Space||wantsFsr4Preset;
+
+    if(wantsFsr4Space) {
+        if(fsr4Space=="auto") {
+            cfg->FsrNonLinearColorSpace.reset();
+            cfg->FsrNonLinearSRGB.reset();
+            cfg->FsrNonLinearPQ.reset();
+        } else {
+            const bool isSrgb=fsr4Space=="srgb";
+            const bool isPq=fsr4Space=="pq";
+            cfg->FsrNonLinearColorSpace=(fsr4Space!="linear");
+            cfg->FsrNonLinearSRGB=isSrgb;
+            cfg->FsrNonLinearPQ=isPq;
+        }
+    }
+    if(wantsFsr4Preset) {
+        if(fsr4Preset<0)cfg->Fsr4Preset.reset();
+        else cfg->Fsr4Preset=static_cast<uint32_t>(fsr4Preset);
+    }
     if(hasBackend){
         if(ffxSpecified)cfg->FfxUpscalerIndex=ffxVersion;
         if(state.api==DX12)cfg->Dx12Upscaler=backend;
@@ -367,6 +417,11 @@ static void SdhLiveRenderTick(uint32_t source){
                 if(name && std::string_view(name).rfind("2.3",0)==0){hasFfx2=true;break;}
             }
             std::string snapshot="capabilities=sharpness,contrast,motion_sharpness,fg_enabled,quality,scale,shader,backend,latencyflex_mode";
+            const bool fsr4Active=(current.currentFeature &&
+                (current.currentFeature->GetUpscalerType()==Upscaler::FFX ||
+                 current.currentFeature->GetUpscalerType()==Upscaler::FFX_on12) &&
+                current.currentFeature->Version().major>=4);
+            if(fsr4Active)snapshot+=",fsr4_color_space,fsr4_preset";
             if(hasFfx2)snapshot+=",ffx2";
             snapshot+="\n";
             snapshot+="sharpness_enabled="+std::to_string((int)cfg->OverrideSharpness.value_or_default())+"\n";
@@ -380,6 +435,20 @@ static void SdhLiveRenderTick(uint32_t source){
             snapshot+="scale_enabled="+std::to_string((int)cfg->OutputScalingEnabled.value_or_default())+"\n";
             snapshot+="scale="+std::to_string(cfg->OutputScalingMultiplier.value_or_default())+"\n";
             snapshot+="fg_enabled="+std::to_string((int)cfg->IsFGEnabled())+"\n";
+            if(fsr4Active) {
+                std::string fsr4Space="linear";
+                if(cfg->FsrNonLinearPQ.value_or_default())fsr4Space="pq";
+                else if(cfg->FsrNonLinearSRGB.value_or_default())fsr4Space="srgb";
+                else if(cfg->FsrNonLinearColorSpace.value_or_default())fsr4Space="non_linear";
+                else if(!cfg->FsrNonLinearColorSpace.has_value() &&
+                        !cfg->FsrNonLinearSRGB.has_value() &&
+                        !cfg->FsrNonLinearPQ.has_value())fsr4Space="auto";
+                snapshot+="color_space="+fsr4Space+"\n";
+                snapshot+="fsr4_preset="+(cfg->Fsr4Preset.has_value() ?
+                    std::to_string(cfg->Fsr4Preset.value()):std::string("default"))+"\n";
+                snapshot+="active_fsr4_preset="+(current.currentFsr4Preset.has_value() ?
+                    std::to_string(current.currentFsr4Preset.value()):std::string("unknown"))+"\n";
+            }
             snapshot+="latencyflex_mode="+std::to_string(static_cast<int>(cfg->FN_LatencyFlexMode.value_or_default()))+"\n";
             snapshot+="shader="+std::string(cfg->RcasEnabled.value_or_default() ?
                 (cfg->SharpnessShader.value_or_default()==SharpenShader::RCAS?"rcas":
