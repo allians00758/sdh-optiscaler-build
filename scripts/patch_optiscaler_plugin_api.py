@@ -43,7 +43,7 @@ replacement=needle+'''
 a=once(a,needle,replacement,api)
 
 c=impl.read_text(encoding='utf-8')
-c=once(c,'#include "Config.h"','#include "Config.h"\n#include "State.h"\n#include "upscalers/IFeature.h"\n#include <algorithm>\n#include <atomic>\n#include <deque>\n#include <map>\n#include <cmath>\n#include <cstring>\n#include <string_view>',impl)
+c=once(c,'#include "Config.h"','#include "Config.h"\n#include "State.h"\n#include "upscalers/IFeature.h"\n#include <algorithm>\n#include <atomic>\n#include <deque>\n#include <map>\n#include <cmath>\n#include <cstring>\n#include <string_view>\n#include <cctype>\n#include <initializer_list>',impl)
 c=once(c,'const OptiPluginApi _api = {','#include "SDHLiveControl.inc"\n\nconst OptiPluginApi _api = {',impl)
 c=once(c,'    .Log = Api_Log,','    .Log = Api_Log,\n    .QueueSdhControl = SdhQueue,\n    .PollSdhControl = SdhPoll,\n    .SnapshotSdhControl = SdhSnapshot,',impl)
 c=once(c,'} // namespace\n\nvoid PluginApi::InitPlugin','} // namespace\n\nvoid PluginApi::SdhLiveTick(uint32_t source) { SdhLiveRenderTick(source); }\n\nvoid PluginApi::InitPlugin',impl)
