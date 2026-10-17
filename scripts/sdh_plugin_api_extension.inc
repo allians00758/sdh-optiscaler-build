@@ -13,6 +13,7 @@ static std::atomic<uint64_t> sdh_core_tick {0};
 static std::atomic<uint32_t> sdh_tick_source {0};
 static std::string sdh_last_render_snapshot;
 static std::string sdh_last_request_flags;
+static std::string sdh_last_request_values;
 
 static std::map<std::string,std::string> SdhParse(std::string_view input) {
     std::map<std::string,std::string> values;
@@ -63,6 +64,35 @@ static std::string SdhFirst(const std::map<std::string,std::string>& values,
     }
     return "";
 }
+
+static std::string SdhNormalize(std::string value) {
+    std::string result;
+    for(unsigned char c:value) if(std::isalnum(c)) result+=static_cast<char>(std::tolower(c));
+    return result;
+}
+// Capture only control IDs and short values, never paths or arbitrary payloads.
+// Results are bounded so ASI snapshot readers with 1 KiB buffers continue to work.
+static std::string SdhRequestDebug(const std::map<std::string,std::string>& vals) {
+    std::string out;
+    for(const auto& [key,val]:vals) {
+        bool relevant=key.find("shader")!=std::string::npos ||
+                      key.find("upscal")!=std::string::npos ||
+                      key.find("backend")!=std::string::npos ||
+                      key.find("latency")!=std::string::npos ||
+                      key.find("barrier")!=std::string::npos;
+        if(!relevant || key.rfind("has_",0)==0)continue;
+        std::string cleaned;
+        for(unsigned char c:val) if(c>=32 && c<127 && c!=';' && c!='=')
+            cleaned+=static_cast<char>(c);
+        if(cleaned.size()>50)cleaned.resize(50);
+        std::string piece=key+":"+cleaned;
+        if(out.size()+piece.size()+1>220)break;
+        if(!out.empty())out+=';';
+        out+=piece;
+    }
+    return out;
+}
+
 static bool SdhWantsBackend(const std::map<std::string,std::string>& vals) {
     return SdhFlag(vals,"has_backend") || SdhFlag(vals,"has_upscaler") ||
            SdhFlag(vals,"has_upscaler_backend");
@@ -134,6 +164,7 @@ static uint32_t SdhSnapshot(OptiPlugin* plugin,char* output,uint32_t cap){
         std::lock_guard<std::mutex> lock(sdh_live_mutex);
         result+=sdh_last_render_snapshot;
         result+="last_request_flags="+sdh_last_request_flags+"\n";
+        result+="last_request_values="+sdh_last_request_values+"\n";
     }
     if(result.size()>=cap)return 0;
     memcpy(output,result.data(),result.size());output[result.size()]=0;
@@ -142,7 +173,7 @@ static uint32_t SdhSnapshot(OptiPlugin* plugin,char* output,uint32_t cap){
 static std::string SdhApplyOnRenderThread(std::string_view command){
     auto vals=SdhParse(command);
     // An unrecognized has_* flag must fail the whole command, never fake success.
-    constexpr std::string_view flags[]={"has_sharpness","has_contrast","has_motion_sharpness", "has_fg_enabled","has_quality","has_scale","has_shader","has_backend","has_upscaler","has_upscaler_backend","has_fg_input","has_fg_output"};
+    constexpr std::string_view flags[]={"has_sharpness","has_contrast","has_motion_sharpness", "has_fg_enabled","has_quality","has_scale","has_shader","has_backend","has_upscaler","has_upscaler_backend","has_fg_input","has_fg_output","has_latencyflex_mode","has_resource_barrier_fix"};
     bool requested=false;
     {
         std::string names;
@@ -154,6 +185,7 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
         }
         std::lock_guard<std::mutex> guard(sdh_live_mutex);
         sdh_last_request_flags=std::move(names);
+        sdh_last_request_values=SdhRequestDebug(vals);
     }
     for(const auto& [name,value]:vals){
         if(name.rfind("has_",0)!=0 || (value!="1"&&value!="true"))continue;
@@ -166,6 +198,10 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
     // Never tell Decky the pipeline switched when only the option changed.
     if(SdhFlag(vals,"has_fg_input") || SdhFlag(vals,"has_fg_output"))
         return "ok=0\nerror=requires_restart_fg_pipeline\napply_stage=ini_restart_required\n";
+    // A single generic boolean cannot represent six independent D3D12
+    // barrier overrides. Refuse rather than overwrite unrelated barriers.
+    if(SdhFlag(vals,"has_resource_barrier_fix"))
+        return "ok=0\nerror=resource_barrier_requires_per_resource_mapping\n";
     float sharp=0,contrast=0,motion=0,quality=0,scale=0;
     bool sharpEnabled=false,contrastEnabled=false,motionEnabled=false,fgEnabled=false,qualityEnabled=false;
     if(SdhFlag(vals,"has_sharpness") &&
@@ -189,13 +225,20 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
     bool shaderOn=false;
     SharpenShader shader=SharpenShader::RCAS;
     if(SdhFlag(vals,"has_shader")) {
-        auto name=SdhLower(SdhFirst(vals,{"shader","sharpness_shader","shader_method"}));
-        if(name=="0" || name=="default" || name=="off" || name=="none" || name=="auto")
-            shaderOn=false;
-        else if(name=="1" || name=="rcas") {shaderOn=true;shader=SharpenShader::RCAS;}
-        else if(name=="2" || name=="da" || name=="depthaware" || name=="depth_aware")
+        auto value=SdhFirst(vals,{"shader","sharpness_shader","shader_method",
+                                  "sharpen_shader","sharpening_method","shader_mode"});
+        auto name=SdhNormalize(value);
+        if(name=="0" || name=="default" || name=="off" || name=="none" ||
+           name=="auto" || name=="disabled" || name=="upscalersdefault" ||
+           name=="upscalerdefault") shaderOn=false;
+        else if(name=="1" || name=="rcas" || name=="cas" || name=="amdrcas")
+            {shaderOn=true;shader=SharpenShader::RCAS;}
+        else if(name=="2" || name=="da" || name=="depthaware" ||
+                name=="depthawarercas" || name=="depthawarercas")
             {shaderOn=true;shader=SharpenShader::DepthAware;}
-        else if(name=="3" || name=="lcda" || name=="localcontrastdepthaware")
+        else if(name=="3" || name=="lcda" || name=="das" ||
+                name=="localcontrastdepthaware" || name=="depthawaredas" ||
+                name=="localcontrast")
             {shaderOn=true;shader=SharpenShader::LocalContrastDepthAware;}
         else return "ok=0\nerror=invalid_shader\n";
     }
@@ -205,7 +248,23 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
     bool ffxSpecified=false;
     auto& state=State::Instance();
     if(hasBackend) {
-        auto code=SdhLower(SdhFirst(vals,{"backend","upscaler","upscaler_backend"}));
+        auto code=SdhLower(SdhFirst(vals,{"backend","upscaler","upscaler_backend",
+                                         "upscaler_type","upscaler_name"}));
+        // Accept user-facing names as well as OptiScaler ini codes.
+        const auto norm=SdhNormalize(code);
+        if(norm=="xess")code="xess";
+        else if(norm=="xess12")code="xess_12";
+        else if(norm=="dlss")code="dlss";
+        else if(norm=="dlss12")code="dlss_12";
+        else if(norm=="fsr21" || norm=="fsr212")code="fsr21";
+        else if(norm=="fsr22" || norm=="fsr221")code="fsr22";
+        else if(norm=="fsr31" || norm=="fsr312")code="fsr31";
+        else if(norm=="fsr2112")code="fsr21_12";
+        else if(norm=="fsr2212")code="fsr22_12";
+        else if(norm=="ffx" || norm=="fsr3x" || norm=="fsr3x4")code="ffx";
+        else if(norm=="ffx12")code="ffx_12";
+        else if(norm=="fsr4" || norm=="fsr40")code="fsr4";
+        else if(norm=="fsr3" || norm=="fsr30")code="fsr3";
         if(code.empty()) return "ok=0\nerror=missing_backend\n";
         const bool isVersionedFfx=(code.rfind("fsr4",0)==0 || code.rfind("fsr3",0)==0);
         if(isVersionedFfx) {
@@ -223,6 +282,16 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
             return "ok=0\nerror=dlss_binary_unavailable\n";
         if(!state.currentFeature || state.changeBackend.empty())
             return "ok=0\nerror=active_upscaler_context_unavailable\n";
+    }
+    LFXMode latencyMode=LFXMode::Conservative;
+    if(SdhFlag(vals,"has_latencyflex_mode")) {
+        auto raw=SdhFirst(vals,{"latencyflex_mode","lfx_mode","mode"});
+        auto mode=SdhNormalize(raw);
+        if(mode=="0" || mode=="conservative") latencyMode=LFXMode::Conservative;
+        else if(mode=="1" || mode=="aggressive") latencyMode=LFXMode::Aggressive;
+        else if(mode=="2" || mode=="reflexids" || mode=="reflexid")
+            latencyMode=LFXMode::ReflexIDs;
+        else return "ok=0\nerror=invalid_latencyflex_mode\n";
     }
     // All validation precedes mutation: a failed command changes nothing.
     auto* cfg=Config::Instance();
@@ -242,6 +311,10 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
     if(SdhFlag(vals,"has_fg_enabled")){
         cfg->FGEnabled=fgEnabled;
         state.fgSettingsChanged=true;
+    }
+    if(SdhFlag(vals,"has_latencyflex_mode")){
+        cfg->FN_LatencyFlexMode=latencyMode;
+        state.fakenvapiReloadLowLatency=true;
     }
     if(SdhFlag(vals,"has_shader")){
         cfg->RcasEnabled=shaderOn;
@@ -275,14 +348,16 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
     }
     // 'ok' means Config updated on render thread, not that a renderer was
     // definitively recreated; expose requested recreation separately.
-    return recreate?"ok=1\napply_stage=renderer_reinit_requested\n":"ok=1\napply_stage=render_config_updated\n";
+    if(recreate) return "ok=1\napply_stage=renderer_reinit_requested\n";
+    if(SdhFlag(vals,"has_latencyflex_mode"))return "ok=1\napply_stage=low_latency_config_updated\n";
+    return "ok=1\napply_stage=render_config_updated\n";
 }
 static void SdhLiveRenderTick(uint32_t source){
     sdh_tick_source.store(source,std::memory_order_release);
     auto tick=sdh_core_tick.fetch_add(1,std::memory_order_release)+1;
     if(tick%3==0){
         if(auto* cfg=Config::Instance()){
-            std::string snapshot="capabilities=sharpness,contrast,motion_sharpness,fg_enabled,quality,scale,shader,backend\n";
+            std::string snapshot="capabilities=sharpness,contrast,motion_sharpness,fg_enabled,quality,scale,shader,backend,latencyflex_mode\n";
             snapshot+="sharpness_enabled="+std::to_string((int)cfg->OverrideSharpness.value_or_default())+"\n";
             snapshot+="sharpness="+std::to_string(cfg->Sharpness.value_or_default())+"\n";
             snapshot+="contrast_enabled="+std::to_string((int)cfg->ContrastEnabled.value_or_default())+"\n";
@@ -294,6 +369,7 @@ static void SdhLiveRenderTick(uint32_t source){
             snapshot+="scale_enabled="+std::to_string((int)cfg->OutputScalingEnabled.value_or_default())+"\n";
             snapshot+="scale="+std::to_string(cfg->OutputScalingMultiplier.value_or_default())+"\n";
             snapshot+="fg_enabled="+std::to_string((int)cfg->IsFGEnabled())+"\n";
+            snapshot+="latencyflex_mode="+std::to_string(static_cast<int>(cfg->FN_LatencyFlexMode.value_or_default()))+"\n";
             snapshot+="shader="+std::string(cfg->RcasEnabled.value_or_default() ?
                 (cfg->SharpnessShader.value_or_default()==SharpenShader::RCAS?"rcas":
                  cfg->SharpnessShader.value_or_default()==SharpenShader::DepthAware?"da":"lcda") :
@@ -302,8 +378,27 @@ static void SdhLiveRenderTick(uint32_t source){
             snapshot+="active_backend="+(state.currentFeature ?
                 UpscalerToCode(state.currentFeature->GetUpscalerType()):std::string("none"))+"\n";
             snapshot+="requested_backend="+UpscalerToCode(state.newBackend)+"\n";
+            if(state.currentFeature && (state.currentFeature->GetUpscalerType()==Upscaler::FFX ||
+                                        state.currentFeature->GetUpscalerType()==Upscaler::FFX_on12)){
+                const auto& versions=(state.api==Vulkan)?state.ffxUpscalerVersionsVk:state.ffxUpscalerVersionsDx12;
+                int index=cfg->FfxUpscalerIndex.value_or_default();
+                if(index>=0 && static_cast<size_t>(index)<versions.names.size() && versions.names[index])
+                    snapshot+="selected_ffx_version="+std::string(versions.names[index])+"\n";
+            }
             snapshot+="fg_input_active="+std::to_string(static_cast<int>(state.activeFgInput))+"\n";
             snapshot+="fg_output_active="+std::to_string(static_cast<int>(state.activeFgOutput))+"\n";
+            // Requested pipeline vs actual initialized pipeline are distinct.
+            const auto requestedFgInput=cfg->FGInput.value_or_default();
+            const auto requestedFgOutput=cfg->FGOutput.value_or_default();
+            snapshot+="fg_input_config="+std::to_string(static_cast<int>(requestedFgInput))+"\n";
+            snapshot+="fg_output_config="+std::to_string(static_cast<int>(requestedFgOutput))+"\n";
+            snapshot+="fg_pipeline_matches_config="+std::to_string((int)(
+                requestedFgInput==state.activeFgInput && requestedFgOutput==state.activeFgOutput))+"\n";
+            snapshot+="fg_pipeline_restart_needed="+std::to_string((int)(
+                requestedFgInput!=state.activeFgInput || requestedFgOutput!=state.activeFgOutput))+"\n";
+            snapshot+="fg_runtime_object="+std::to_string((int)(state.CurrentFG()!=nullptr))+"\n";
+            snapshot+="fg_runtime_active="+std::to_string((int)(
+                state.CurrentFG()!=nullptr && state.CurrentFG()->IsActive()))+"\n";
             std::lock_guard<std::mutex> lock(sdh_live_mutex);
             sdh_last_render_snapshot=std::move(snapshot);
         }
