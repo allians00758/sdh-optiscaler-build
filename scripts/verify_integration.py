@@ -31,4 +31,7 @@ for k,needles in checks.items():
     for needle in needles:
         if needle not in contents[k]:
             raise SystemExit(f'Missing {needle!r} in {files[k]}')
+p=contents['provider']
+assert p.index('std::string snapshot="capabilities=') < p.index('snapshot+="ffx_versions_count="'), 'FFX diagnostics refer to an undeclared snapshot'
+assert 'snapshot+="\\\\n";' not in p, 'Incorrect escaped newline in FFX version list'
 print('PASS: SDH Live API v2 integration source markers verified.')

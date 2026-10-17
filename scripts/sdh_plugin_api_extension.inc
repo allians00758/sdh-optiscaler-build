@@ -426,6 +426,7 @@ static void SdhLiveRenderTick(uint32_t source){
             for(const auto* name:candidates.names){
                 if(name && SdhFfxVersionNumber(name).rfind("2.3",0)==0){hasFfx2=true;break;}
             }
+            std::string snapshot="capabilities=sharpness,contrast,motion_sharpness,fg_enabled,quality,scale,shader,backend,latencyflex_mode";
             // Observe the versions OptiScaler's running FFX SDK really exposed.
             // This is the decisive diagnostic for 3.1.5/2.3.4 missing live.
             {
@@ -440,11 +441,11 @@ static void SdhLiveRenderTick(uint32_t source){
                     if(count++)snapshot+=",";
                     snapshot+=version;
                 }
-                snapshot+="\\n";
+                snapshot+="\n";
                 snapshot+="ffx_selected_index="+std::to_string(cfg->FfxUpscalerIndex.value_or_default())+"\n";
                 snapshot+="graphics_api="+std::to_string(static_cast<int>(current.api))+"\n";
             }
-            std::string snapshot="capabilities=sharpness,contrast,motion_sharpness,fg_enabled,quality,scale,shader,backend,latencyflex_mode";
+
             const bool fsr4Active=(current.currentFeature &&
                 (current.currentFeature->GetUpscalerType()==Upscaler::FFX ||
                  current.currentFeature->GetUpscalerType()==Upscaler::FFX_on12) &&
