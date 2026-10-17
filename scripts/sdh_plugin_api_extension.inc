@@ -122,7 +122,8 @@ static bool SdhChooseFfxVersion(const State& state, API api, std::string request
     const auto& versions=(api==Vulkan)?state.ffxUpscalerVersionsVk:state.ffxUpscalerVersionsDx12;
     const bool requestMajor4=requested.rfind("fsr4",0)==0;
     const bool requestMajor3=requested.rfind("fsr3",0)==0;
-    if(!requestMajor4&&!requestMajor3) return false;
+    const bool requestMajor2=requested.rfind("fsr2.3",0)==0;
+    if(!requestMajor4&&!requestMajor3&&!requestMajor2) return false;
     std::string version=requested.substr(3); // "fsr4.1" => "4.1"
     selected=-1;
     std::string best;
@@ -357,7 +358,17 @@ static void SdhLiveRenderTick(uint32_t source){
     auto tick=sdh_core_tick.fetch_add(1,std::memory_order_release)+1;
     if(tick%3==0){
         if(auto* cfg=Config::Instance()){
-            std::string snapshot="capabilities=sharpness,contrast,motion_sharpness,fg_enabled,quality,scale,shader,backend,latencyflex_mode\n";
+            auto& current=State::Instance();
+            // Advertise FFX 2.3 live switching only when FFX SDK reports
+            // an actual 2.3.x implementation for this renderer/API.
+            const auto& candidates=(current.api==Vulkan)?current.ffxUpscalerVersionsVk:current.ffxUpscalerVersionsDx12;
+            bool hasFfx2=false;
+            for(const auto* name:candidates.names){
+                if(name && std::string_view(name).rfind("2.3",0)==0){hasFfx2=true;break;}
+            }
+            std::string snapshot="capabilities=sharpness,contrast,motion_sharpness,fg_enabled,quality,scale,shader,backend,latencyflex_mode";
+            if(hasFfx2)snapshot+=",ffx2";
+            snapshot+="\n";
             snapshot+="sharpness_enabled="+std::to_string((int)cfg->OverrideSharpness.value_or_default())+"\n";
             snapshot+="sharpness="+std::to_string(cfg->Sharpness.value_or_default())+"\n";
             snapshot+="contrast_enabled="+std::to_string((int)cfg->ContrastEnabled.value_or_default())+"\n";
