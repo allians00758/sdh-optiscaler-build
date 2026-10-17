@@ -19,7 +19,7 @@ contents={k:v.read_text(encoding='utf-8') for k,v in files.items()}
 checks={
     'api': ['#define OPTI_PLUGIN_API_VERSION 2','QueueSdhControl','PollSdhControl','SnapshotSdhControl'],
     'provider': ['SdhQueue(', 'SdhPoll(', 'SdhSnapshot(', 'SdhLiveRenderTick(', 'apply_stage=renderer_reinit_requested', 'tick_source_code=', 'active_backend=', 'has_shader', 'SdhChooseFfxVersion', 'has_upscaler', 'requires_restart_fg_pipeline', 'last_request_values=', 'has_latencyflex_mode', 'resource_barrier_requires_per_resource_mapping', 'selected_ffx_version=', 'hasFfx2', 'requestMajor2', 'fg_runtime_active=', 'fg_pipeline_restart_needed=', 'fg_pipeline_matches_config=', 'has_color_space', 'has_fsr4_preset', 'active_fsr4_preset=', 'active_ffx_version=', 'ffx_available_versions=', 'ffx_versions_count=', 'SdhFfxVersionNumber', 'fsr4_color_space,fsr4_preset'],
-    'impl': ['#include "SDHLiveControl.inc"', '.QueueSdhControl = SdhQueue', '.PollSdhControl = SdhPoll', '.SnapshotSdhControl = SdhSnapshot', 'void PluginApi::SdhLiveTick(uint32_t source)'],
+    'impl': ['#include "upscalers/ffx/FFXFeature.h"', '#include "SDHLiveControl.inc"', '.QueueSdhControl = SdhQueue', '.PollSdhControl = SdhPoll', '.SnapshotSdhControl = SdhSnapshot', 'void PluginApi::SdhLiveTick(uint32_t source)'],
     'impl_h': ['static void SdhLiveTick(uint32_t source);'],
     'dx': ['#include "plugins/PluginApi.h"', 'PluginApi::SdhLiveTick(1);'],
     'vk': ['#include "plugins/PluginApi.h"', 'PluginApi::SdhLiveTick(2);'],
@@ -45,4 +45,18 @@ assert 'code.rfind("fsr4",0)==0' in dispatch, 'FSR 4.x bypasses the versioned FF
 assert 'code.find(\'.\')==std::string::npos' in p, 'Dotted FSR 3.1 is rewritten as legacy fsr31'
 assert 'SdhChooseFfxVersion(state,state.api,code,ffxVersion)' in p, 'Missing FFX index resolution'
 assert 'backend=(state.api==DX11)?Upscaler::FFX_on12:Upscaler::FFX' in p, 'Missing FFX backend selection'
+# Cross-backend regression: running XeSS/FSR22 may leave both FFX SDK
+# version arrays uninitialized until the native upscaler menu is opened.
+# The live change handler must explicitly query the SDK before resolution.
+start = p.index('if(isVersionedFfx) {')
+preflight = p[start:p.index('if(!SdhChooseFfxVersion(', start)]
+for needle in [
+    'if(ffxVersions.names.empty())',
+    'FFXFeature::EnsureVersionsDx12()',
+    'FFXFeature::EnsureVersionsVulkan()',
+    'error=ffx_version_query_failed',
+    'state.ffxUpscalerVersionsVk',
+    'state.ffxUpscalerVersionsDx12',
+]:
+    assert needle in preflight, 'Missing lazy FFX version preflight: ' + needle
 print('PASS: SDH Live API v2 integration source markers verified.')
