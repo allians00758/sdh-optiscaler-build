@@ -263,6 +263,14 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
     if(hasBackend) {
         auto code=SdhLower(SdhFirst(vals,{"backend","upscaler","upscaler_backend",
                                          "upscaler_type","upscaler_name"}));
+        // Preserve versioned FFX names (fsr2.3, fsr3.1, fsr4.1) rather
+        // than rewriting them to legacy DX11 "fsr31" or falling into
+        // CodeToUpscalerFfx, which cannot resolve versioned FFX names.
+        if(code.rfind("fsr",0)==0 && code.find('.')!=std::string::npos) {
+            const auto digit=code.find_first_of("0123456789");
+            if(digit!=std::string::npos)
+                code="fsr"+code.substr(digit);
+        }
         // Accept user-facing names as well as OptiScaler ini codes.
         const auto norm=SdhNormalize(code);
         if(norm=="xess")code="xess";
@@ -271,7 +279,8 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
         else if(norm=="dlss12")code="dlss_12";
         else if(norm=="fsr21" || norm=="fsr212")code="fsr21";
         else if(norm=="fsr22" || norm=="fsr221")code="fsr22";
-        else if(norm=="fsr31" || norm=="fsr312")code="fsr31";
+        else if((norm=="fsr31" || norm=="fsr312") && code.find('.')==std::string::npos)
+            code="fsr31";
         else if(norm=="fsr2112")code="fsr21_12";
         else if(norm=="fsr2212")code="fsr22_12";
         else if(norm=="ffx" || norm=="fsr3x" || norm=="fsr3x4")code="ffx";
@@ -279,7 +288,13 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
         else if(norm=="fsr4" || norm=="fsr40")code="fsr4";
         else if(norm=="fsr3" || norm=="fsr30")code="fsr3";
         if(code.empty()) return "ok=0\nerror=missing_backend\n";
-        const bool isVersionedFfx=(code.rfind("fsr4",0)==0 || code.rfind("fsr3",0)==0);
+        // FFX 2.3 must take the *same* version-index path as FFX 3.x/4.x.
+        // Previously fsr2.3 fell into CodeToUpscalerFfx("fsr2.3"),
+        // returned Reset, and always failed invalid_or_unsupported_backend
+        // even while capabilities advertised ffx2.
+        const bool isVersionedFfx=(code.rfind("fsr4",0)==0 ||
+                                   code.rfind("fsr3",0)==0 ||
+                                   code.rfind("fsr2.3",0)==0);
         if(isVersionedFfx) {
             if(!SdhChooseFfxVersion(state,state.api,code,ffxVersion))
                 return "ok=0\nerror=ffx_version_unavailable\n";
