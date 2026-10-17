@@ -296,6 +296,21 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
                                    code.rfind("fsr3",0)==0 ||
                                    code.rfind("fsr2.3",0)==0);
         if(isVersionedFfx) {
+            // OptiScaler loads the FFX SDK's version list lazily when its
+            // menu first opens. Without the menu the list is empty when
+            // switching *from XeSS/FSR22/DLSS*, although 2.3.4, 3.1.5 and
+            // 4.1.1 may be installed. Use OptiScaler's native preflight.
+            // This work is performed only for an explicit user command on
+            // the render thread, never on every Present/tick.
+            const auto& ffxVersions=(state.api==Vulkan) ?
+                state.ffxUpscalerVersionsVk : state.ffxUpscalerVersionsDx12;
+            if(ffxVersions.names.empty()) {
+                if(state.api==Vulkan) FFXFeature::EnsureVersionsVulkan();
+                else if(state.api==DX11 || state.api==DX12) FFXFeature::EnsureVersionsDx12();
+                else return "ok=0\nerror=ffx_graphics_api_unavailable\n";
+            }
+            if(ffxVersions.names.empty())
+                return "ok=0\nerror=ffx_version_query_failed\n";
             if(!SdhChooseFfxVersion(state,state.api,code,ffxVersion))
                 return "ok=0\nerror=ffx_version_unavailable\n";
             backend=(state.api==DX11)?Upscaler::FFX_on12:Upscaler::FFX;
