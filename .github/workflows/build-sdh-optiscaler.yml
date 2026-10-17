@@ -1,0 +1,129 @@
+name: Build SDH OptiScaler Live API (Windows x64)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sdh-live-api-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout SDH repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Decode and verify source patch and companion ASI
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $src64 = (Get-Content 'payload/sdh-live-source-mini.tar.gz.b64' -Raw).Trim()
+          [IO.File]::WriteAllBytes('sdh-live-source-mini.tar.gz', [Convert]::FromBase64String($src64))
+          $hash = (Get-FileHash 'sdh-live-source-mini.tar.gz' -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne 'f22f22db7653678a339026cb04bef4ec946eff8fc7c8d2f3c44cc0b0b975ef72') {
+            throw "Source payload SHA-256 mismatch: $hash"
+          }
+          tar -xzf sdh-live-source-mini.tar.gz
+          if ($LASTEXITCODE -ne 0) { throw 'Source unpack failed' }
+          $asi64 = ((Get-Content 'payload/asi.part1.b64' -Raw).Trim()) + ((Get-Content 'payload/asi.part2.b64' -Raw).Trim())
+          [IO.File]::WriteAllBytes('sdh-control.asi.gz', [Convert]::FromBase64String($asi64))
+          $hash = (Get-FileHash 'sdh-control.asi.gz' -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne '593575235164bc1b52e7a41f9d845494c390089343061a2c84ec11528fa3cd7f') {
+            throw "ASI payload SHA-256 mismatch: $hash"
+          }
+          New-Item -ItemType Directory -Force 'asi' | Out-Null
+          $source = [IO.File]::OpenRead('sdh-control.asi.gz')
+          try {
+            $gunzip = [IO.Compression.GZipStream]::new($source, [IO.Compression.CompressionMode]::Decompress)
+            try {
+              $destination = [IO.File]::Create('asi/sdh-optiscaler-control.asi')
+              try { $gunzip.CopyTo($destination) } finally { $destination.Dispose() }
+            } finally { $gunzip.Dispose() }
+          } finally { $source.Dispose() }
+          $hash = (Get-FileHash 'asi/sdh-optiscaler-control.asi' -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne '4e99d2593e0a3d256ceddc0d76cb46eeb8a8487806a2cc9194522d20eb853709') {
+            throw "Unpacked ASI SHA-256 mismatch: $hash"
+          }
+          python -c "import pathlib; print('Source scripts:', [str(x) for x in pathlib.Path('scripts').glob('*')])"
+
+      - name: Publish unpacked sources to repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts asi/sdh-optiscaler-control.asi
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "Expand SDH Live Control v2 sources and Windows ASI"
+            if ($LASTEXITCODE -ne 0) { throw 'Source git commit failed' }
+            git push origin HEAD:main
+            if ($LASTEXITCODE -ne 0) { throw 'Source git push failed' }
+          }
+
+      - name: Fetch pinned official OptiScaler source and submodules
+        id: base
+        run: |
+          git clone --single-branch --branch plugin-api https://github.com/optiscaler/OptiScaler.git upstream
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot clone OptiScaler' }
+          git -C upstream checkout --detach f24ebc05404b1bda179b42314a06c8ab40462f20
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned upstream SHA not found' }
+          git -C upstream submodule update --init --recursive
+          if ($LASTEXITCODE -ne 0) { throw 'OptiScaler submodule checkout failed' }
+          $sha=(git -C upstream rev-parse HEAD).Trim()
+          "upstream_sha=$sha" >> $env:GITHUB_OUTPUT
+
+      - name: Apply and inspect SDH Live Control source patch
+        run: |
+          python scripts/patch_optiscaler_plugin_api.py upstream
+          if ($LASTEXITCODE -ne 0) { throw 'SDH API patch failed' }
+          python scripts/verify_integration.py upstream
+          if ($LASTEXITCODE -ne 0) { throw 'SDH API verification failed' }
+
+      - name: Add Visual Studio MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Compile OptiScaler Windows Release x64
+        working-directory: upstream
+        run: |
+          msbuild .\OptiScaler.sln /m:2 /p:Configuration=Release /p:Platform=x64 /verbosity:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'OptiScaler source build failed' }
+
+      - name: Package unsigned test DLL and ASI
+        run: |
+          $dll='upstream/x64/Release/a/OptiScaler.dll'
+          if (!(Test-Path -LiteralPath $dll)) { throw "No compiled DLL at $dll" }
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item $dll 'out/dxgi.dll'
+          Copy-Item 'asi/sdh-optiscaler-control.asi' 'out/sdh-optiscaler-control.asi'
+          @"
+          SDH OptiScaler 10 Live Control v2 EXPERIMENTAL
+          Upstream: https://github.com/optiscaler/OptiScaler
+          Source SHA: ${{ steps.base.outputs.upstream_sha }}
+          Target: Windows x64; UNSIGNED TEST BUILD
+          WARNING: never overwrite a working DLL until live tested on Steam Deck.
+          Live-renderer behavior and Proton compatibility are not yet verified.
+          "@ | Set-Content -Path 'out/BUILD-INFO.txt'
+          Get-FileHash -Algorithm SHA256 out/dxgi.dll,out/sdh-optiscaler-control.asi | Out-String | Add-Content 'out/BUILD-INFO.txt'
+
+      - name: Upload compiled artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SDH-OptiScaler10-LiveAPI-${{ steps.base.outputs.upstream_sha }}
+          path: out/
+          if-no-files-found: error
+          retention-days: 14
