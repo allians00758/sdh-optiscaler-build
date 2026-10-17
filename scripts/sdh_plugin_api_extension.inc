@@ -79,7 +79,9 @@ static std::string SdhRequestDebug(const std::map<std::string,std::string>& vals
                       key.find("upscal")!=std::string::npos ||
                       key.find("backend")!=std::string::npos ||
                       key.find("latency")!=std::string::npos ||
-                      key.find("barrier")!=std::string::npos;
+                      key.find("barrier")!=std::string::npos ||
+                      key.find("color_space")!=std::string::npos ||
+                      key.find("fsr4_preset")!=std::string::npos;
         if(!relevant || key.rfind("has_",0)==0)continue;
         std::string cleaned;
         for(unsigned char c:val) if(c>=32 && c<127 && c!=';' && c!='=')
