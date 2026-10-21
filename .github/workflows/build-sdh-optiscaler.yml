@@ -1,17 +1,10 @@
-name: Build SDH OptiScaler Live API (Windows x64)
-
+name: Build SDH OptiScaler 10 Live API v2 (Nightly 20261021)
 on:
   push:
-    branches: [main]
+    branches: [dev48-nightly-20261021-live-v2]
   workflow_dispatch:
-
 permissions:
   contents: read
-
-concurrency:
-  group: sdh-live-api-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   build:
     runs-on: windows-2022
@@ -20,78 +13,56 @@ jobs:
       run:
         shell: pwsh
     steps:
-      - name: Checkout SDH repository
+      - name: Checkout SDH port
         uses: actions/checkout@v4
-        with:
-          persist-credentials: true
-
       - name: Setup Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
-      - name: Verify checked-in SDH Live v2 sources
+      - name: Fetch exact OptiScaler 2026-10-21 source and submodules
         run: |
-          $ErrorActionPreference = 'Stop'
-          foreach ($path in @(
-            'scripts/patch_optiscaler_plugin_api.py',
-            'scripts/verify_integration.py',
-            'scripts/sdh_plugin_api_extension.inc'
-          )) {
-            if (!(Test-Path -LiteralPath $path)) { throw "Required checked-in source missing: $path" }
-            Get-FileHash -Algorithm SHA256 $path
-          }
-
-      - name: Fetch pinned official OptiScaler source and submodules
-        id: base
-        run: |
-          git clone --single-branch --branch plugin-api https://github.com/optiscaler/OptiScaler.git upstream
+          git clone --single-branch --branch master https://github.com/optiscaler/OptiScaler.git upstream
           if ($LASTEXITCODE -ne 0) { throw 'Cannot clone OptiScaler' }
-          git -C upstream checkout --detach f24ebc05404b1bda179b42314a06c8ab40462f20
-          if ($LASTEXITCODE -ne 0) { throw 'Pinned upstream SHA not found' }
+          git -C upstream checkout --detach 33e434ed133f1657530b7806df56676fcdcb85ed
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned nightly base SHA not found' }
           git -C upstream submodule update --init --recursive
-          if ($LASTEXITCODE -ne 0) { throw 'OptiScaler submodule checkout failed' }
-          $sha=(git -C upstream rev-parse HEAD).Trim()
-          "upstream_sha=$sha" >> $env:GITHUB_OUTPUT
-
-      - name: Apply and inspect SDH Live Control source patch
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot initialize submodules' }
+      - name: Port SDH Live API v2 into upstream renderer
         run: |
-          python scripts/patch_optiscaler_plugin_api.py upstream
-          if ($LASTEXITCODE -ne 0) { throw 'SDH API patch failed' }
-          python scripts/verify_integration.py upstream
-          if ($LASTEXITCODE -ne 0) { throw 'SDH API verification failed' }
-
-      - name: Add Visual Studio MSBuild to PATH
+          python scripts/patch_optiscaler_master_live.py upstream
+          if ($LASTEXITCODE -ne 0) { throw 'SDH Live API port failed' }
+          python scripts/verify_master_live.py upstream
+          if ($LASTEXITCODE -ne 0) { throw 'Live API validation failed' }
+      - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
-
-      - name: Compile OptiScaler Windows Release x64
+      - name: Build Windows x64 Release DLL
         working-directory: upstream
         run: |
           msbuild .\OptiScaler.sln /m:2 /p:Configuration=Release /p:Platform=x64 /verbosity:minimal
-          if ($LASTEXITCODE -ne 0) { throw 'OptiScaler source build failed' }
-
-      - name: Package unsigned test DLL and ASI
+          if ($LASTEXITCODE -ne 0) { throw 'OptiScaler Windows build failed' }
+      - name: Package isolated test build (never auto-install)
         run: |
+          $ErrorActionPreference='Stop'
           $dll='upstream/x64/Release/a/OptiScaler.dll'
-          if (!(Test-Path -LiteralPath $dll)) { throw "No compiled DLL at $dll" }
+          if (!(Test-Path -LiteralPath $dll)) { throw "Compiled DLL missing: $dll" }
           New-Item -ItemType Directory -Force out | Out-Null
-          Copy-Item $dll 'out/dxgi.dll'
+          Copy-Item $dll out/dxgi.dll
+          Copy-Item asi/sdh-optiscaler-control.asi out/sdh-optiscaler-control-legacy.asi
           @"
-          SDH OptiScaler 10 Live Control API v2 - DEV18 test DLL
-          Upstream: https://github.com/optiscaler/OptiScaler
-          Source SHA: ${{ steps.base.outputs.upstream_sha }}
-          Target: Windows x64; UNSIGNED TEST BUILD
-          WARNING: never overwrite a working DLL until live tested on Steam Deck.
-          This artifact contains only dxgi.dll. Preserve the installed DEV7 SDH companion ASI.
-          NEVER install the old companion ASI binary from other artifacts.
-          Live-renderer behavior and Proton compatibility are not yet verified.
-          "@ | Set-Content -Path 'out/BUILD-INFO.txt'
-          Get-FileHash -Algorithm SHA256 out/dxgi.dll | Out-String | Add-Content 'out/BUILD-INFO.txt'
-
-      - name: Upload compiled artifact
+          SDH Live API v2 experimental DLL for OptiScaler 10.0.0-pre1
+          OptiScaler source: 33e434ed133f1657530b7806df56676fcdcb85ed
+          Nightly reference: nightly-20261021
+          Target: Windows x64 (Steam Deck through Proton)
+          Includes FSR4 Model Auto, INT8, INT8 RDNA2, INT8 Lite.
+          FP8 is disallowed by SDH Steam Deck live-control.
+          BINARY NOT VALIDATED ON STEAM DECK. Do not replace working files without backup.
+          Companion ASI in this artifact is legacy repository version; prefer DEV47 companion from plugin.
+          "@ | Set-Content out/BUILD-INFO.txt
+          Get-FileHash out/dxgi.dll -Algorithm SHA256 | Out-String | Add-Content out/BUILD-INFO.txt
+      - name: Upload unsigned test artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: SDH-OptiScaler10-LiveAPI-DEV18-${{ github.sha }}
+          name: SDH-OptiScaler10-Nightly20261021-LiveAPI-v2-${{ github.sha }}
           path: out/
-          if-no-files-found: error
           retention-days: 14
+          if-no-files-found: error
