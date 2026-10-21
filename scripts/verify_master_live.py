@@ -13,7 +13,7 @@ data={k:p.read_text(encoding="utf-8") for k,p in files.items()}
 checks={
 "vk":["SDHLiveBridge.inc","SDHLiveTick(2);"],
 "dx":["extern void SDHLiveTick","SDHLiveTick(1);"],
-"bridge":["QueueSdhControl","SDHPluginApiV2","OptiPluginInit","SdhLiveRenderTick",
+"bridge":["SDHQueueBridge","SDHPluginApiV2","OptiPluginInit","SdhLiveRenderTick",
           "fsr4_model","has_fsr4_model","FSR4Model::INT8","FSR4Model::INT8_2","FSR4Model::INT8Lite",
           "invalid_or_forbidden_fsr4_model","renderer_reinit_requested","SDHLiveTick(uint32_t source)"],
 "config":["Fsr4Model"],
