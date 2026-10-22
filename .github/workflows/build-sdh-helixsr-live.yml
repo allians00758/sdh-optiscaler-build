@@ -1,0 +1,76 @@
+name: SDH HelixSR Scaler 1.1.0 Windows x64 Live Bridge
+on:
+  push:
+    branches: [sdh-helixsr-live-1.1.0-build]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: helixsr-live-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  compile:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: microsoft/setup-msbuild@v2
+      - name: Fetch pinned HelixSR-Scaler 1.1.0 and dependencies
+        run: |
+          $ErrorActionPreference='Stop'
+          git clone --filter=blob:none https://github.com/lonewolf0622/HelixSR-Scaler.git upstream
+          if ($LASTEXITCODE -ne 0) { throw 'git clone failed' }
+          git -C upstream checkout --detach 95564fa2180d2a71d03f0301a47f9d4982e1a44b
+          if ($LASTEXITCODE -ne 0) { throw 'pinned SHA checkout failed' }
+          git -C upstream submodule update --init --recursive
+          if ($LASTEXITCODE -ne 0) { throw 'submodules failed' }
+          echo 'PINNED_HELIXSR_SHA=95564fa2180d2a71d03f0301a47f9d4982e1a44b'
+      - name: Apply SDH ASI live bridge and verify patch
+        run: |
+          python helixsr-live/patch_helixsr_scaler.py upstream
+          if ($LASTEXITCODE -ne 0) { throw 'source bridge patch failed' }
+          $t=Get-Content -Raw upstream/OptiScaler/dllmain.cpp
+          if (!$t.Contains('SDHLiveBridgeImpl.inc')) { throw 'bridge missing' }
+          foreach ($filename in @('menu/menu_overlay_dx.cpp','menu/menu_overlay_vk.cpp','inputs/NVNGX_DLSS_Dx12.cpp','inputs/NVNGX_DLSS_Dx11.cpp','inputs/NVNGX_DLSS_Vk.cpp')) {
+            if (!(Select-String -Path "upstream/OptiScaler/$filename" -Pattern 'SDHLive::RenderTick' -Quiet)) { throw "no tick in $filename" }
+          }
+      - name: Compile Windows Release x64
+        run: |
+          msbuild upstream/OptiScaler.sln /m:2 /p:Configuration=Release /p:Platform=x64 /verbosity:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'MSBuild failed' }
+      - name: Validate and package compiled DLL
+        run: |
+          $ErrorActionPreference='Stop'
+          $dll=Get-ChildItem upstream -Recurse -File -Filter OptiScaler.dll | Where-Object {$_.FullName -match 'Release'} | Sort-Object Length -Descending | Select-Object -First 1
+          if (!$dll) { throw 'No Release OptiScaler.dll produced' }
+          $msbuild=Get-Command dumpbin.exe -ErrorAction SilentlyContinue
+          if ($msbuild) {
+            $exports = & dumpbin.exe /exports $dll.FullName | Out-String
+            foreach ($symbol in @('SDH_Control_Version','SDH_Control_ConfigPathW','SDH_Control_Apply','SDH_Control_Snapshot','SDH_Control_RealSwapchain')) {
+              if (!$exports.Contains($symbol)) { throw "Missing DLL export: $symbol" }
+            }
+          } else {
+            Write-Warning 'dumpbin not in PATH - export validation unavailable'
+          }
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item $dll.FullName out/OptiScaler.dll
+          @"
+          SDH HelixSR-Scaler 1.1.0 Live ASI Bridge Windows x64
+          Source: lonewolf0622/HelixSR-Scaler
+          Commit: 95564fa2180d2a71d03f0301a47f9d4982e1a44b
+          ABI: SDH_Control_* v11, used by SDH ASI
+          Testing: compiled only; Steam Deck Proton runtime not verified
+          "@ | Set-Content out/BUILD-INFO.txt
+          Get-FileHash out/OptiScaler.dll -Algorithm SHA256 | Format-List | Out-String | Add-Content out/BUILD-INFO.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SDH-HelixSR-Scaler-1.1.0-Windows-x64-LiveBridge
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
