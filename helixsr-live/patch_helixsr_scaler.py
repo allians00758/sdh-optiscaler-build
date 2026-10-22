@@ -52,6 +52,22 @@ addon.mkdir(exist_ok=True)
 for typ,path in files.items():
  shutil.copy2(path,path.with_suffix(path.suffix+".sdh-backup"))
  path.write_text(mods[typ],encoding="utf-8")
+# DEV77: Keep native HelixSR [Sharpening] options written from Decky.
+# Stock Scaler 1.1.0 rewrites Sharpener=off and deletes Sharpness
+# on every startup, making valid native settings ineffective.
+native_path=root/"OptiScaler/helixsr/HelixSR.cpp"
+native_code=native_path.read_text(encoding="utf-8")
+for original, replacement in (
+    ('    ini.Set("Sharpening", "Sharpener", "off");',
+     '    // SDH native settings: preserve user Sharpening.Sharpener across launch.'),
+    ('const Managed kRetired[] = { { "Sharpening", "Sharpness" },',
+     'const Managed kRetired[] = {')
+):
+ if native_code.count(original)!=1:raise RuntimeError("unexpected upstream native HelixSR scaler source: "+original)
+ native_code=native_code.replace(original,replacement,1)
+shutil.copy2(native_path,native_path.with_suffix(native_path.suffix+".sdh-backup"))
+native_path.write_text(native_code,encoding="utf-8")
+
 for name in ("SDHLiveTick.h","SDHLiveBridgeImpl.inc"):
  shutil.copy2(here/name,addon/name)
 print("SDH source bridge injected into pinned HelixSR-Scaler 1.1.0")
