@@ -178,6 +178,17 @@ std::string collect(){
     out<<"helixsr_fg_pipeline_selected="<<int(
         s.activeFgInput==FGInput::NvngxFG&&s.activeFgNvngx==FGNvngxReplacement::HelixSR)<<"\n";
     out<<"fg_config_enabled="<<int(cfg->IsFGEnabled())<<"\n";
+    // Live renderer route, distinct from saved INI and from proved generated frames.
+    out<<"fg_input="<<(s.activeFgInput==FGInput::NvngxFG?"nvngxfg":
+        s.activeFgInput==FGInput::NoFG?"nofg":"auto")<<"\n";
+    out<<"fg_output=auto\n";
+    out<<"fg_provider_requested="<<(s.activeFgNvngx==FGNvngxReplacement::HelixSR?"helixsr":"auto")<<"\n";
+    out<<"fg_enabled="<<int(cfg->IsFGEnabled())<<"\n";
+    out<<"helix_int8="<<(cfg->HelixSRInt8.has_value()?cfg->HelixSRInt8.value():"auto")<<"\n";
+    out<<"helix_wave_size="<<(cfg->HelixSRWaveSize.has_value()?std::to_string(cfg->HelixSRWaveSize.value()):"auto")<<"\n";
+    out<<"helix_fg_preset="<<(cfg->HelixSRFGPreset.has_value()?std::to_string(cfg->HelixSRFGPreset.value()):"auto")<<"\n";
+    out<<"helix_quickflow="<<(cfg->HelixSRQuickFlow.has_value()?std::to_string(cfg->HelixSRQuickFlow.value()):"auto")<<"\n";
+
     out<<"graphics_api="<<int(s.api)<<"\n";
     out<<"helix_scaler_sdh_bridge=1\n";
     return out.str();
