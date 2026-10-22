@@ -3,6 +3,7 @@
 #include "Config.h"
 #include "State.h"
 #include "helixsr/HelixSR.h"
+#include "hooks/Streamline_Hooks.h"
 #include "upscalers/IFeature.h"
 #include <windows.h>
 #include <algorithm>
@@ -30,6 +31,11 @@ std::atomic<unsigned long long> ticks{0};
 std::atomic<unsigned long long> last_tick{0};
 std::atomic<unsigned> source_code{0};
 std::string latest;
+std::atomic<int> last_fg_saved_ratio{-1};
+std::atomic<unsigned long long> latest_fg_apply_tick{0};
+std::atomic<unsigned long long> latest_backend_apply_tick{0};
+std::string backend_target;
+std::string last_apply_stage;
 unsigned long long millis(){return GetTickCount64();}
 std::map<std::string,std::string> fields(std::string_view command){
     std::map<std::string,std::string> result;
@@ -78,10 +84,11 @@ std::string apply(std::string_view command){
             return "ok=0\nerror=unsupported_live_field:"+key+"\n";
     }
     if(!requested)return "ok=0\nerror=no_supported_changes\n";
-    // The HelixSR Nvngx FG provider is initialized on launch; do not lie
-    // about hot switching while its Streamline swapchain is running.
-    if(has(v,"has_fg_enabled"))
-        return "ok=0\nerror=requires_restart_fg_pipeline\n";
+    // The provider route cannot change live. The already active NvngxFG
+    // route CAN be toggled with the same Streamline ratio override as the hotkey.
+    bool requestedFgEnabled=false;
+    if(has(v,"has_fg_enabled")&&!boolean(value(v,"fg_enabled"),requestedFgEnabled))
+        return "ok=0\nerror=invalid_fg_enabled\n";
     auto* cfg=Config::Instance();
     if(!cfg)return "ok=0\nerror=no_active_config\n";
     auto& s=State::Instance();
@@ -137,7 +144,29 @@ std::string apply(std::string_view command){
         if(!s.currentFeature||s.changeBackend.empty())
             return "ok=0\nerror=active_upscaler_context_unavailable\n";
     }
+    if(has(v,"has_fg_enabled")){
+        if(s.activeFgInput!=FGInput::NvngxFG ||
+           s.activeFgNvngx!=FGNvngxReplacement::HelixSR)
+            return "ok=0\nerror=requires_restart_fg_pipeline\n";
+        if(!s.dlssgMfgMax.has_value()||s.dlssgMfgMax.value()<1)
+            return "ok=0\nerror=dlssg_ratio_override_unavailable\n";
+    }
     // Validate all inputs before touching the live renderer configuration.
+    if(has(v,"has_fg_enabled")){
+        auto& ratio=cfg->FGDLSSGOverrideInterpolationCount;
+        if(!requestedFgEnabled){
+            if(!ratio.has_value()||ratio.value()!=0){
+                last_fg_saved_ratio.store(ratio.has_value()?ratio.value():-1);
+                ratio=0;
+            }
+        }else if(ratio.has_value()&&ratio.value()==0){
+            const int saved=last_fg_saved_ratio.load();
+            if(saved>0&&saved<=s.dlssgMfgMax.value())ratio=saved;
+            else ratio.reset();
+        }
+        StreamlineHooks::updateDlssgOptions();
+        latest_fg_apply_tick.store(ticks.load());
+    }
     if(has(v,"has_sharpness")){cfg->OverrideSharpness=enabledSharp;cfg->Sharpness=sharp;}
     if(has(v,"has_shader")){
         cfg->RcasEnabled=shaderOn;
@@ -154,6 +183,11 @@ std::string apply(std::string_view command){
         cfg->OutputScalingMultiplier=scale;
     }
     if(changeBackend){
+        {std::lock_guard<std::mutex> lock(mutex);
+            backend_target=value(v,"upscaler");
+            if(backend_target.empty())backend_target=value(v,"backend");
+        }
+        latest_backend_apply_tick.store(ticks.load());
         if(newBackend==Upscaler::FFX||newBackend==Upscaler::FFX_on12)
             cfg->FfxUpscalerIndex=0;
         if(s.api==DX12)cfg->Dx12Upscaler=newBackend;
@@ -164,8 +198,14 @@ std::string apply(std::string_view command){
     if(recreate){
         s.newBackend=changeBackend?newBackend:s.currentFeature->GetUpscalerType();
         for(auto& item:s.changeBackend)item.second=true;
+        {std::lock_guard<std::mutex> lock(mutex);last_apply_stage="renderer_reinit_requested";}
         return "ok=1\napply_stage=renderer_reinit_requested\n";
     }
+    if(has(v,"has_fg_enabled")){
+        {std::lock_guard<std::mutex> lock(mutex);last_apply_stage="dlssg_override_updated";}
+        return "ok=1\napply_stage=dlssg_override_updated\n";
+    }
+    {std::lock_guard<std::mutex> lock(mutex);last_apply_stage="render_config_updated";}
     return "ok=1\napply_stage=render_config_updated\n";
 }
 std::string collect(){
@@ -199,6 +239,20 @@ std::string collect(){
     out<<"helixsr_fg_pipeline_selected="<<int(
         s.activeFgInput==FGInput::NvngxFG&&s.activeFgNvngx==FGNvngxReplacement::HelixSR)<<"\n";
     out<<"fg_config_enabled="<<int(cfg->IsFGEnabled())<<"\n";
+    const auto forcedOff=cfg->FGDLSSGOverrideInterpolationCount.has_value()&&
+        cfg->FGDLSSGOverrideInterpolationCount.value()==0;
+    out<<"fg_override_forced_off="<<int(forcedOff)<<"\n";
+    out<<"fg_override_count="<<(cfg->FGDLSSGOverrideInterpolationCount.has_value()?
+        cfg->FGDLSSGOverrideInterpolationCount.value():-1)<<"\n";
+    out<<"fg_live_enabled="<<int(s.activeFgInput==FGInput::NvngxFG&&
+        s.activeFgNvngx==FGNvngxReplacement::HelixSR&&!forcedOff)<<"\n";
+    out<<"fg_live_toggle_tick="<<latest_fg_apply_tick.load()<<"\n";
+    out<<"upscaler_request_tick="<<latest_backend_apply_tick.load()<<"\n";
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        out<<"upscaler_requested="<<backend_target<<"\n";
+        out<<"last_apply_stage="<<last_apply_stage<<"\n";
+    }
     // Live renderer route, distinct from saved INI and from proved generated frames.
     out<<"fg_input="<<(s.activeFgInput==FGInput::NvngxFG?"nvngxfg":
         s.activeFgInput==FGInput::NoFG?"nofg":"auto")<<"\n";
