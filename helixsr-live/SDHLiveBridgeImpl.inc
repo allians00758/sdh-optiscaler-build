@@ -215,7 +215,7 @@ std::string collect(){
     std::ostringstream out;
     out<<"core_tick="<<ticks.load()<<"\n";
     out<<"tick_source_code="<<source_code.load()<<"\n";
-    out<<"capabilities=sharpness,contrast,motion_sharpness,quality,scale,shader,backend\n";
+    out<<"capabilities=sharpness,contrast,motion_sharpness,quality,scale,shader,backend,fg_enabled\n";
     out<<"active_backend=";
     if(HelixSR::IsActive())out<<"helixsr";
     else if(s.currentFeature)out<<UpscalerToCode(s.currentFeature->GetUpscalerType());
@@ -258,7 +258,7 @@ std::string collect(){
         s.activeFgInput==FGInput::NoFG?"nofg":"auto")<<"\n";
     out<<"fg_output=auto\n";
     out<<"fg_provider_requested="<<(s.activeFgNvngx==FGNvngxReplacement::HelixSR?"helixsr":"auto")<<"\n";
-    out<<"fg_enabled="<<int(cfg->IsFGEnabled())<<"\n";
+    out<<"fg_enabled="<<int(s.activeFgInput==FGInput::NvngxFG&&\n        s.activeFgNvngx==FGNvngxReplacement::HelixSR&&!forcedOff)<<"\n";
     out<<"helix_int8="<<(cfg->HelixSRInt8.has_value()?cfg->HelixSRInt8.value():"auto")<<"\n";
     out<<"helix_wave_size="<<(cfg->HelixSRWaveSize.has_value()?std::to_string(cfg->HelixSRWaveSize.value()):"auto")<<"\n";
     out<<"helix_fg_preset="<<(cfg->HelixSRFGPreset.has_value()?std::to_string(cfg->HelixSRFGPreset.value()):"auto")<<"\n";
