@@ -67,7 +67,7 @@ std::string apply(std::string_view command){
     const auto v=fields(command);
     constexpr const char* supported[]={
         "has_sharpness","has_contrast","has_motion_sharpness",
-        "has_quality","has_scale","has_backend","has_upscaler",
+        "has_quality","has_scale","has_shader","has_backend","has_upscaler",
         "has_fg_enabled"
     };
     bool requested=false;
@@ -86,6 +86,8 @@ std::string apply(std::string_view command){
     if(!cfg)return "ok=0\nerror=no_active_config\n";
     auto& s=State::Instance();
     bool enabledSharp=false,enabledContrast=false,enabledMotion=false,enabledQuality=false;
+    bool shaderOn=false;
+    SharpenShader requestedShader=SharpenShader::RCAS;
     float sharp=0,contrast=0,motion=0,quality=0,scale=0;
     if(has(v,"has_sharpness")&&
        (!boolean(value(v,"sharpness_enabled"),enabledSharp)||
@@ -105,6 +107,18 @@ std::string apply(std::string_view command){
         return "ok=0\nerror=invalid_quality\n";
     if(has(v,"has_scale")&&!scalar(value(v,"scale"),0.5f,3.f,scale))
         return "ok=0\nerror=invalid_scale\n";
+    // This matches the upstream HelixSR-Scaler [Sharpness] menu: switching
+    // shader is a render-thread Config mutation, not a library/proxy reload.
+    if(has(v,"has_shader")){
+        auto method=value(v,"shader");
+        std::transform(method.begin(),method.end(),method.begin(),
+            [](unsigned char c){return (char)std::tolower(c);});
+        if(method=="off"||method=="none"||method=="auto"||method=="default")shaderOn=false;
+        else if(method=="rcas"||method=="cas"){shaderOn=true;requestedShader=SharpenShader::RCAS;}
+        else if(method=="da"||method=="da_rcas"||method=="depthaware"){shaderOn=true;requestedShader=SharpenShader::DepthAware;}
+        else if(method=="lcda"||method=="da_das"||method=="localcontrastdepthaware"){shaderOn=true;requestedShader=SharpenShader::LocalContrastDepthAware;}
+        else return "ok=0\nerror=invalid_shader\n";
+    }
     const bool changeBackend=has(v,"has_backend")||has(v,"has_upscaler");
     Upscaler newBackend=Upscaler::Reset;
     if(changeBackend){
@@ -125,6 +139,10 @@ std::string apply(std::string_view command){
     }
     // Validate all inputs before touching the live renderer configuration.
     if(has(v,"has_sharpness")){cfg->OverrideSharpness=enabledSharp;cfg->Sharpness=sharp;}
+    if(has(v,"has_shader")){
+        cfg->RcasEnabled=shaderOn;
+        if(shaderOn)cfg->SharpnessShader=requestedShader;
+    }
     if(has(v,"has_contrast")){cfg->ContrastEnabled=enabledContrast;cfg->Contrast=contrast;}
     if(has(v,"has_motion_sharpness")){cfg->MotionSharpnessEnabled=enabledMotion;cfg->MotionSharpness=motion;}
     if(has(v,"has_quality")){
@@ -157,12 +175,15 @@ std::string collect(){
     std::ostringstream out;
     out<<"core_tick="<<ticks.load()<<"\n";
     out<<"tick_source_code="<<source_code.load()<<"\n";
-    out<<"capabilities=sharpness,contrast,motion_sharpness,quality,scale,backend\n";
+    out<<"capabilities=sharpness,contrast,motion_sharpness,quality,scale,shader,backend\n";
     out<<"active_backend=";
     if(HelixSR::IsActive())out<<"helixsr";
     else if(s.currentFeature)out<<UpscalerToCode(s.currentFeature->GetUpscalerType());
     else out<<"unknown";
     out<<"\n";
+    out<<"shader_enabled="<<int(cfg->RcasEnabled.value_or_default())<<"\n";
+    out<<"shader="<<(cfg->SharpnessShader.value_or_default()==SharpenShader::DepthAware?"da_rcas":
+        cfg->SharpnessShader.value_or_default()==SharpenShader::LocalContrastDepthAware?"da_das":"rcas")<<"\n";
     out<<"sharpness_enabled="<<int(cfg->OverrideSharpness.value_or_default())<<"\n";
     out<<"sharpness="<<cfg->Sharpness.value_or_default()<<"\n";
     out<<"contrast_enabled="<<int(cfg->ContrastEnabled.value_or_default())<<"\n";
