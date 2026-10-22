@@ -137,6 +137,7 @@ std::string apply(std::string_view command){
                 return "ok=0\nerror=helixsr_ffx_not_loaded\n";
             newBackend=s.api==DX11?Upscaler::FFX_on12:Upscaler::FFX;
         }else if(code=="xess")newBackend=Upscaler::XeSS;
+        else if(code=="fsr21")newBackend=Upscaler::FSR21;
         else if(code=="fsr22")newBackend=Upscaler::FSR22;
         else return "ok=0\nerror=unsupported_backend\n";
         if(s.api!=DX11&&s.api!=DX12&&s.api!=Vulkan)
