@@ -41,10 +41,10 @@ for typ,fn,num in [
  ("vulkan","NVSDK_NGX_VULKAN_EvaluateFeature","5")]:
  s=files[typ].read_text(encoding="utf-8")
  s=replace(s,'#include "Config.h"','#include "Config.h"\n#include "sdh/SDHLiveTick.h"',typ+" include")
- start=s.find(fn)
+ start=s.find("NVSDK_NGX_API NVSDK_NGX_Result "+fn+"(")
  if start<0:raise RuntimeError("missing "+fn)
  brace=s.find("{",start)
- if brace<0 or brace-start>350:raise RuntimeError("unexpected function body "+fn)
+ if brace<0 or brace-start>800:raise RuntimeError("unexpected function body "+fn)
  s=s[:brace+1]+"\n    SDHLive::RenderTick("+num+");"+s[brace+1:]
  mods[typ]=s
 addon=root/"OptiScaler/sdh"
