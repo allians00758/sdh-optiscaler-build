@@ -33,7 +33,7 @@ for typ,code,fragment in [
  ("vk","2",'bool MenuOverlayVk::QueuePresent(VkQueue queue, VkPresentInfoKHR* pPresentInfo)\n{\n    LOG_FUNC();')]:
  s=files[typ].read_text(encoding="utf-8")
  s=replace(s,'#include "menu_common.h"','#include "menu_common.h"\n#include "sdh/SDHLiveTick.h"',typ+" include")
- s=replace(s,fragment,fragment.replace("\n", "\n    SDHLive::RenderTick("+code+");\n",1) if typ=="dx" else fragment.replace('    LOG_FUNC();','    SDHLive::RenderTick(2);\n    LOG_FUNC();'),typ+" tick")
+ s=replace(s,fragment,("    SDHLive::RenderTick(1);\n"+fragment) if typ=="dx" else fragment.replace('    LOG_FUNC();','    SDHLive::RenderTick(2);\n    LOG_FUNC();'),typ+" tick")
  mods[typ]=s
 for typ,fn,num in [
  ("dx12","NVSDK_NGX_D3D12_EvaluateFeature","3"),
