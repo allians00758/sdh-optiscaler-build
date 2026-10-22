@@ -258,7 +258,8 @@ std::string collect(){
         s.activeFgInput==FGInput::NoFG?"nofg":"auto")<<"\n";
     out<<"fg_output=auto\n";
     out<<"fg_provider_requested="<<(s.activeFgNvngx==FGNvngxReplacement::HelixSR?"helixsr":"auto")<<"\n";
-    out<<"fg_enabled="<<int(s.activeFgInput==FGInput::NvngxFG&&\n        s.activeFgNvngx==FGNvngxReplacement::HelixSR&&!forcedOff)<<"\n";
+    out<<"fg_enabled="<<int(s.activeFgInput==FGInput::NvngxFG&&
+        s.activeFgNvngx==FGNvngxReplacement::HelixSR&&!forcedOff)<<"\n";
     out<<"helix_int8="<<(cfg->HelixSRInt8.has_value()?cfg->HelixSRInt8.value():"auto")<<"\n";
     out<<"helix_wave_size="<<(cfg->HelixSRWaveSize.has_value()?std::to_string(cfg->HelixSRWaveSize.value()):"auto")<<"\n";
     out<<"helix_fg_preset="<<(cfg->HelixSRFGPreset.has_value()?std::to_string(cfg->HelixSRFGPreset.value()):"auto")<<"\n";
