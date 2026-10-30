@@ -1,0 +1,68 @@
+name: Build SDH HelixSR Scaler 2.1.0 Live API v2
+on:
+  push:
+    branches: [dev52-helixsr-scaler-210-live-v2]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout SDH port
+        uses: actions/checkout@v4
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fetch exact HelixSR-Scaler 2.1.0 source and submodules
+        run: |
+          git clone https://github.com/lonewolf0622/HelixSR-Scaler.git upstream
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot clone OptiScaler' }
+          git -C upstream checkout --detach b05ce9522270f5d8d966e35f7659aca4ddfcbd7c
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned HelixSR-Scaler 2.1.0 SHA not found' }
+          git -C upstream submodule update --init --recursive
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot initialize submodules' }
+      - name: Port SDH Live API v2 into HelixSR renderer
+        run: |
+          python scripts/patch_optiscaler_master_live.py upstream
+          if ($LASTEXITCODE -ne 0) { throw 'SDH Live API port failed' }
+          python scripts/verify_master_live.py upstream
+          if ($LASTEXITCODE -ne 0) { throw 'Live API validation failed' }
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+      - name: Build Windows x64 Release DLL
+        working-directory: upstream
+        run: |
+          msbuild .\OptiScaler.sln /m:2 /p:Configuration=Release /p:Platform=x64 /verbosity:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'HelixSR Scaler Windows build failed' }
+      - name: Package isolated test build (never auto-install)
+        run: |
+          $ErrorActionPreference='Stop'
+          $dll='upstream/x64/Release/a/OptiScaler.dll'
+          if (!(Test-Path -LiteralPath $dll)) { throw "Compiled DLL missing: $dll" }
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item $dll out/dxgi.dll
+          Copy-Item asi/sdh-optiscaler-control.asi out/sdh-optiscaler-control-legacy.asi
+          @"
+          SDH Live API v2 experimental DLL for HelixSR Scaler 2.1.0
+          HelixSR-Scaler source: b05ce9522270f5d8d966e35f7659aca4ddfcbd7c
+          HelixSR-Scaler source tag: v2.1.0\n          Requires separate HelixSR 3.0 or newer runtime
+          Target: Windows x64 (Steam Deck through Proton)
+          Includes FSR4 Model Auto, INT8, INT8 RDNA2, INT8 Lite.
+          FP8 is disallowed by SDH Steam Deck live-control.
+          BINARY NOT VALIDATED ON STEAM DECK. Do not replace working files without backup.
+          Companion ASI in this artifact is legacy repository version; prefer current SDH FrameGen companion from DEV84.
+          "@ | Set-Content out/BUILD-INFO.txt
+          Get-FileHash out/dxgi.dll -Algorithm SHA256 | Out-String | Add-Content out/BUILD-INFO.txt
+      - name: Upload unsigned test artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SDH-HelixSR-Scaler210-LiveAPI-v2-${{ github.sha }}
+          path: out/
+          retention-days: 14
+          if-no-files-found: error
