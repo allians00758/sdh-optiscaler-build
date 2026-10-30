@@ -558,6 +558,9 @@ static void SdhLiveRenderTick(uint32_t source){
             auto& state=State::Instance();
             snapshot+="active_backend="+(state.currentFeature ?
                 UpscalerToCode(state.currentFeature->GetUpscalerType()):std::string("none"))+"\n";
+            // Actual renderer-owned module, never read from the requested INI.
+            snapshot+="active_custom_upscaler="+(state.currentFeature ?
+                state.currentFeature->GetCustomUpscalerName():std::string())+"\n";
             // Read the actual instantiated FFX version, not the requested
             // Config index. The selected index can change before reinit.
             if(state.currentFeature &&
