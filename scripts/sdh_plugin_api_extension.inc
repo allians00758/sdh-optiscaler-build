@@ -145,11 +145,14 @@ static bool SdhChooseFfxVersion(const State& state, API api, std::string request
     for(size_t i=0;i<versions.names.size();++i) {
         if(!versions.names[i])continue;
         const std::string name=SdhLower(versions.names[i]);
-        const std::string item=SdhFfxVersionNumber(versions.names[i]);
-        const bool driver=item.find('*')!=std::string::npos||
+        const std::string rawItem=SdhFfxVersionNumber(versions.names[i]);
+        // Version tags may carry an SDK description after the numeric version.
+        // Keep only the semantic version and distinguish the driver suffix.
+        const auto end=rawItem.find_first_not_of("0123456789.");
+        const std::string item=rawItem.substr(0,end);
+        const bool driver=name.find('*')!=std::string::npos||
                           name.find("driver")!=std::string::npos;
-        // Explicit version requests use a full, exact implementation name.
-        // Never accept an extra suffix (especially the driver asterisk).
+        // Never alias SDK FSR 4.1.2 to the * driver provider.
         if(exactVersion) {
             if(item!=target || driver)continue;
             selected=static_cast<int>(i);
@@ -305,6 +308,8 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
         if(code.empty()) return "ok=0\nerror=missing_backend\n";
         if(norm=="ffx315")code="fsr3.1.5";
         if(norm=="ffx316")code="fsr3.1.6";
+        if(norm=="fsr412" || norm=="ffx412")code="fsr4.1.2";
+        if(norm=="ffx234")code="fsr2.3.4";
         // Modern OptiScaler stores custom folder names independently of Upscaler::FFX.
         // This must be resolved before CodeToUpscalerFfx (it knows enum codes only).
         bool explicitCustom=code.rfind("custom:",0)==0;
