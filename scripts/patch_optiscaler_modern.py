@@ -144,6 +144,16 @@ for flavor in ("Dx12","Vk"):
     ffx_custom[hdr]=h
     ffx_custom[cpp]=body
 
+# Keep the LatencyFlex tuning mode visible even when a game currently
+# routes low latency through Auto/AntiLag/XeLL/Reflex. Configuration is
+# independent of the currently ACTIVE low-latency output.
+menu_path="OptiScaler/menu/menu_common.cpp"
+menu=file(menu_path)
+menu=one(menu,
+    "    if (activeOutput == LowLatencyMode::LatencyFlex)\n    {\n        static const std::vector<MenuOption<LFXMode>> lfx_modes = {",
+    "    {\n        // SDH: allow preconfiguring LatencyFlex even when inactive.\n        // This does not force the low-latency output or override XeFG.\n        if (activeOutput != LowLatencyMode::LatencyFlex)\n            ImGui::TextDisabled(\"LatencyFlex mode is saved but inactive; choose LatencyFlex as Output to use it.\");\n        static const std::vector<MenuOption<LFXMode>> lfx_modes = {",
+    "Always-visible LatencyFlex mode menu")
+
 proj=file("OptiScaler/OptiScaler.vcxproj")
 proj=one(proj,'<ClCompile Include="menu\\menu_common.cpp" />','<ClCompile Include="plugins\\PluginApi.cpp" />\n    <ClCompile Include="menu\\menu_common.cpp" />',"MSBuild source")
 # Filter entries optional; compiler does not read this file.
@@ -159,6 +169,7 @@ stage={
     "OptiScaler/dllmain.cpp":dll,"OptiScaler/menu/menu_overlay_dx.cpp":dx,
     "OptiScaler/menu/menu_overlay_vk.cpp":vk,
     "OptiScaler/OptiScaler.vcxproj":proj,
+    menu_path:menu,
     "OptiScaler/upscalers/IFeature.h":base_feature,
     **ffx_custom, **evals,
 }
