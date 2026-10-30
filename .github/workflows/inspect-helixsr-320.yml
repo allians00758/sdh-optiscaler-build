@@ -1,0 +1,42 @@
+name: Inspect HelixSR 3.2.0 release structure (SDH)
+on:
+  push:
+    branches: [dev53-inspect-helixsr320]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download verified upstream ZIP and inspect layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --connect-timeout 30 -o HelixSR-3.2.0.zip https://github.com/lonewolf0622/HelixSR/releases/download/v3.2.0/HelixSR-3.2.0.zip
+          echo 'a4e83da8b4335a886197aef10e8f8a8947a2e32e5e1eebfdf060ff00724c17c7  HelixSR-3.2.0.zip' | sha256sum -c -
+          mkdir -p out
+          python3 - <<'PY'
+          import zipfile,pathlib
+          z=zipfile.ZipFile('HelixSR-3.2.0.zip')
+          names=z.namelist()
+          pathlib.Path('out/layout.txt').write_text('\n'.join(names)+'\n')
+          print('TOTAL FILES',len(names))
+          print('TOP-LEVEL',sorted(set(n.split('/')[0] for n in names)))
+          for n in names:
+              if n.lower().endswith(('.sh','.py','.md','.txt','.json','.ini','.bat')) and ('setup' in n.lower() or n.lower().endswith('/readme.md') or 'package' in n.lower()):
+                  if z.getinfo(n).file_size<=300000:
+                      p=pathlib.Path('out/scripts')/n
+                      p.parent.mkdir(parents=True,exist_ok=True)
+                      p.write_bytes(z.read(n))
+                      print('SCRIPT',n,z.getinfo(n).file_size)
+          for n in names:
+              if 'HelixSR-fsrfg/' in n or 'HLX-FSR4/' in n or n.endswith('/helixsr.dll') or n.endswith('OptiScaler.dll'):
+                  print('RUNTIME',n,z.getinfo(n).file_size)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: helixsr320-inspection
+          path: out/
+          retention-days: 3
