@@ -416,7 +416,8 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
     }
     if(SdhFlag(vals,"has_latencyflex_mode")){
         cfg->FN_LatencyFlexMode=latencyMode;
-        state.fakenvapiReloadLowLatency=true;
+        // Modern LatencyFlex detects FN_LatencyFlexMode changes in lfx_begin_frame;
+        // no obsolete State reload flag is needed.
     }
     if(SdhFlag(vals,"has_shader")){
         cfg->RcasEnabled=shaderOn;
