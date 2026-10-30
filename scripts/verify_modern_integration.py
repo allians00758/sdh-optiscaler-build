@@ -24,6 +24,11 @@ checks={
     "OptiScaler/dllmain.cpp": ["PluginApi::InitPlugin(hMod, ext, entry.path())"],
     "OptiScaler/menu/menu_overlay_dx.cpp": ["PluginApi::SdhLiveTick(1)"],
     "OptiScaler/menu/menu_overlay_vk.cpp": ["PluginApi::SdhLiveTick(2)"],
+    "OptiScaler/menu/menu_common.cpp": [
+        "SDH: allow preconfiguring LatencyFlex even when inactive.",
+        "LatencyFlex mode is saved but inactive",
+        'PopulateCombo("LatencyFlex mode", config->FN_LatencyFlexMode, lfx_modes)',
+    ],
     "OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp": ["PluginApi::SdhLiveTick(3)"],
     "OptiScaler/inputs/NVNGX_DLSS_Dx11.cpp": ["PluginApi::SdhLiveTick(4)"],
     "OptiScaler/inputs/NVNGX_DLSS_Vk.cpp": ["PluginApi::SdhLiveTick(5)"],
@@ -43,6 +48,9 @@ assert "code=\"fsr3.1.6\"" in p, "3.1.6 must remain supported when advertised by
 assert "code=\"fsr3.1.5\"" in p
 assert "active_ffx_version=" in p, "Separate requested vs active version reporting"
 assert "custom_upscaler_unavailable" in p
+menu=(root/"OptiScaler/menu/menu_common.cpp").read_text(encoding="utf-8")
+assert "if (activeOutput == LowLatencyMode::LatencyFlex)" not in menu, "LatencyFlex control must not disappear when inactive"
+assert "LFXMode::Conservative" in menu and "LFXMode::Aggressive" in menu and "LFXMode::ReflexIDs" in menu
 d=(root/"OptiScaler/dllmain.cpp").read_text(encoding="utf-8")
 assert d.count("PluginApi::InitPlugin(hMod, ext, entry.path())")==2
 c=(root/"OptiScaler/Config.cpp").read_text(encoding="utf-8")
