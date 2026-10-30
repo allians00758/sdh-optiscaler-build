@@ -2,7 +2,7 @@ name: Build SDH OptiScaler Live API (Windows x64)
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev19-modern-custom-live-api]
   workflow_dispatch:
 
 permissions:
@@ -35,6 +35,8 @@ jobs:
           $ErrorActionPreference = 'Stop'
           foreach ($path in @(
             'scripts/patch_optiscaler_plugin_api.py',
+            'scripts/patch_optiscaler_modern.py',
+            'scripts/verify_modern_integration.py',
             'scripts/verify_integration.py',
             'scripts/sdh_plugin_api_extension.inc'
           )) {
@@ -45,9 +47,9 @@ jobs:
       - name: Fetch pinned official OptiScaler source and submodules
         id: base
         run: |
-          git clone --single-branch --branch plugin-api https://github.com/optiscaler/OptiScaler.git upstream
+          git clone https://github.com/optiscaler/OptiScaler.git upstream
           if ($LASTEXITCODE -ne 0) { throw 'Cannot clone OptiScaler' }
-          git -C upstream checkout --detach f24ebc05404b1bda179b42314a06c8ab40462f20
+          git -C upstream checkout --detach e7e3872d410f704479d94d318d68d163b6b58947
           if ($LASTEXITCODE -ne 0) { throw 'Pinned upstream SHA not found' }
           git -C upstream submodule update --init --recursive
           if ($LASTEXITCODE -ne 0) { throw 'OptiScaler submodule checkout failed' }
@@ -56,9 +58,9 @@ jobs:
 
       - name: Apply and inspect SDH Live Control source patch
         run: |
-          python scripts/patch_optiscaler_plugin_api.py upstream
+          python scripts/patch_optiscaler_modern.py upstream
           if ($LASTEXITCODE -ne 0) { throw 'SDH API patch failed' }
-          python scripts/verify_integration.py upstream
+          python scripts/verify_modern_integration.py upstream
           if ($LASTEXITCODE -ne 0) { throw 'SDH API verification failed' }
 
       - name: Add Visual Studio MSBuild to PATH
@@ -77,12 +79,12 @@ jobs:
           New-Item -ItemType Directory -Force out | Out-Null
           Copy-Item $dll 'out/dxgi.dll'
           @"
-          SDH OptiScaler 10 Live Control API v2 - DEV18 test DLL
+          SDH OptiScaler 10 Live Control API v2 - DEV19 modern custom FFX test DLL
           Upstream: https://github.com/optiscaler/OptiScaler
           Source SHA: ${{ steps.base.outputs.upstream_sha }}
           Target: Windows x64; UNSIGNED TEST BUILD
           WARNING: never overwrite a working DLL until live tested on Steam Deck.
-          This artifact contains only dxgi.dll. Preserve the installed DEV7 SDH companion ASI.
+          This artifact contains only dxgi.dll. Preserve the installed compatible SDH companion ASI (do not use stale binaries).
           NEVER install the old companion ASI binary from other artifacts.
           Live-renderer behavior and Proton compatibility are not yet verified.
           "@ | Set-Content -Path 'out/BUILD-INFO.txt'
@@ -91,7 +93,7 @@ jobs:
       - name: Upload compiled artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SDH-OptiScaler10-LiveAPI-DEV18-${{ github.sha }}
+          name: SDH-OptiScaler10-LiveAPI-DEV19-${{ github.sha }}
           path: out/
           if-no-files-found: error
           retention-days: 14
