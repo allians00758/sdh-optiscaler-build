@@ -127,7 +127,7 @@ proj=one(proj,'<ClCompile Include="menu\\menu_common.cpp" />','<ClCompile Includ
 provider_src=Path(__file__).with_name("sdh_plugin_api_extension.inc")
 if not provider_src.is_file():raise RuntimeError("Missing checked-in native provider")
 provider=provider_src.read_text(encoding="utf-8")
-for needle in ['CustomProviders::IsFfx','CustomUpscalerVk','FfxUpscalerIndexFor(customName)','requested_custom_upscaler=']:
+for needle in ['CustomProviders::Scan','CustomUpscalerVk','FfxUpscalerIndexFor(customName)','requested_custom_upscaler=']:
     if needle not in provider:raise RuntimeError(f"Missing DEV19 custom support: {needle}")
 
 stage={
