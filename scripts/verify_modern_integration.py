@@ -49,8 +49,16 @@ assert "code=\"fsr3.1.5\"" in p
 assert "active_ffx_version=" in p, "Separate requested vs active version reporting"
 assert "custom_upscaler_unavailable" in p
 menu=(root/"OptiScaler/menu/menu_common.cpp").read_text(encoding="utf-8")
-assert "if (activeOutput == LowLatencyMode::LatencyFlex)" not in menu, "LatencyFlex control must not disappear when inactive"
-assert "LFXMode::Conservative" in menu and "LFXMode::Aggressive" in menu and "LFXMode::ReflexIDs" in menu
+# This source legitimately uses the active LatencyFlex condition elsewhere,
+# e.g. to show the current output name. Only inspect the settings function.
+section_start="void MenuCommon::RenderLowLatencySettings(RenderMenuContext& ctx)"
+section_end="void MenuCommon::RenderActiveImageSettings(RenderMenuContext& ctx)"
+assert menu.count(section_start)==1 and menu.count(section_end)==1
+low_latency_menu=menu.split(section_start,1)[1].split(section_end,1)[0]
+assert "if (activeOutput == LowLatencyMode::LatencyFlex)" not in low_latency_menu, "LatencyFlex selector is still gated in its settings"
+assert "if (activeOutput != LowLatencyMode::LatencyFlex)" in low_latency_menu
+assert 'PopulateCombo("LatencyFlex mode", config->FN_LatencyFlexMode, lfx_modes)' in low_latency_menu
+assert "LFXMode::Conservative" in low_latency_menu and "LFXMode::Aggressive" in low_latency_menu and "LFXMode::ReflexIDs" in low_latency_menu
 d=(root/"OptiScaler/dllmain.cpp").read_text(encoding="utf-8")
 assert d.count("PluginApi::InitPlugin(hMod, ext, entry.path())")==2
 c=(root/"OptiScaler/Config.cpp").read_text(encoding="utf-8")
