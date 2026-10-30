@@ -1,7 +1,7 @@
-name: Build SDH OptiScaler 10 Live API v2 (Nightly 20261024)
+name: Build SDH OptiScaler 10 Live API v2 (Nightly 20261029)
 on:
   push:
-    branches: [dev50-nightly-20261024-live-v2]
+    branches: [dev51-nightly-20261029-live-v2]
   workflow_dispatch:
 permissions:
   contents: read
@@ -19,11 +19,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Fetch exact OptiScaler 2026-10-24 source and submodules
+      - name: Fetch exact OptiScaler 2026-10-29 source and submodules
         run: |
           git clone --single-branch --branch master https://github.com/optiscaler/OptiScaler.git upstream
           if ($LASTEXITCODE -ne 0) { throw 'Cannot clone OptiScaler' }
-          git -C upstream checkout --detach fd3a45a6cac6d610a35c570479f80dae95ca4eac
+          git -C upstream checkout --detach e57377fc75831d5c2fbb58d6a057a75702d78a95
           if ($LASTEXITCODE -ne 0) { throw 'Pinned nightly base SHA not found' }
           git -C upstream submodule update --init --recursive
           if ($LASTEXITCODE -ne 0) { throw 'Cannot initialize submodules' }
@@ -50,8 +50,8 @@ jobs:
           Copy-Item asi/sdh-optiscaler-control.asi out/sdh-optiscaler-control-legacy.asi
           @"
           SDH Live API v2 experimental DLL for OptiScaler 10.0.0-pre1
-          OptiScaler source: fd3a45a6cac6d610a35c570479f80dae95ca4eac
-          Nightly reference: nightly-20261024
+          OptiScaler source: e57377fc75831d5c2fbb58d6a057a75702d78a95
+          Nightly reference: nightly-20261029
           Target: Windows x64 (Steam Deck through Proton)
           Includes FSR4 Model Auto, INT8, INT8 RDNA2, INT8 Lite.
           FP8 is disallowed by SDH Steam Deck live-control.
@@ -62,7 +62,7 @@ jobs:
       - name: Upload unsigned test artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: SDH-OptiScaler10-Nightly20261024-LiveAPI-v2-${{ github.sha }}
+          name: SDH-OptiScaler10-Nightly20261029-LiveAPI-v2-${{ github.sha }}
           path: out/
           retention-days: 14
           if-no-files-found: error
