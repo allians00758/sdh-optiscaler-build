@@ -130,21 +130,34 @@ static std::string SdhFfxVersionNumber(const char* raw) {
     return name.substr(digit);
 }
 static bool SdhChooseFfxVersion(const State& state, API api, std::string requested, int& selected) {
-    // No fixed memory signatures: query the live FFX version list provided by OptiScaler.
+    // Select from the exact SDK enumerated list, never invent an index.
+    // A qualified "fsr4.1.2" must NOT select the distinct "4.1.2 *" driver
+    // provider, even when the driver entry sorts after the regular SDK one.
     const auto& versions=(api==Vulkan)?state.ffxUpscalerVersionsVk:state.ffxUpscalerVersionsDx12;
     const bool requestMajor4=requested.rfind("fsr4",0)==0;
     const bool requestMajor3=requested.rfind("fsr3",0)==0;
     const bool requestMajor2=requested.rfind("fsr2.3",0)==0;
-    if(!requestMajor4&&!requestMajor3&&!requestMajor2) return false;
-    std::string version=requested.substr(3); // "fsr4.1" => "4.1"
+    if(!requestMajor4&&!requestMajor3&&!requestMajor2)return false;
+    const std::string target=requested.substr(3);
+    const bool exactVersion=(std::count(target.begin(),target.end(),'.')>=2);
     selected=-1;
     std::string best;
     for(size_t i=0;i<versions.names.size();++i) {
         if(!versions.names[i])continue;
-        std::string item=SdhFfxVersionNumber(versions.names[i]);
-        if(item.rfind(version,0)!=0)continue;
-        // Prefer highest reported version for an unqualified request.
-        if(selected<0 || item>best) { selected=static_cast<int>(i);best=item; }
+        const std::string name=SdhLower(versions.names[i]);
+        const std::string item=SdhFfxVersionNumber(versions.names[i]);
+        const bool driver=item.find('*')!=std::string::npos||
+                          name.find("driver")!=std::string::npos;
+        // Explicit version requests use a full, exact implementation name.
+        // Never accept an extra suffix (especially the driver asterisk).
+        if(exactVersion) {
+            if(item!=target || driver)continue;
+            selected=static_cast<int>(i);
+            break;
+        }
+        if(item.rfind(target,0)!=0 || driver)continue;
+        // For shorthand fsr3/fsr4, pick the newest regular SDK version.
+        if(selected<0 || item>best){selected=static_cast<int>(i);best=item;}
     }
     return selected>=0;
 }
