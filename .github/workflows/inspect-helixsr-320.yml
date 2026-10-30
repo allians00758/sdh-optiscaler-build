@@ -23,6 +23,9 @@ jobs:
           names=z.namelist()
           pathlib.Path('out/layout.txt').write_text('\n'.join(names)+'\n')
           print('TOTAL FILES',len(names))
+          print('TOTAL UNCOMPRESSED',sum(n.file_size for n in z.infolist()))
+          print('MAX FILE SIZE',max(n.file_size for n in z.infolist()))
+          print('HLX BUILT MARKER',z.read('HelixSR-3.2.0/HLX-FSR4/HLX-FSR4-built.txt').decode('utf-8','replace'))
           print('TOP-LEVEL',sorted(set(n.split('/')[0] for n in names)))
           for n in names:
               if n.lower().endswith(('.sh','.py','.md','.txt','.json','.ini','.bat')) and ('setup' in n.lower() or n.lower().endswith('/readme.md') or 'package' in n.lower()):
