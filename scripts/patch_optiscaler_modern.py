@@ -121,6 +121,29 @@ for pth,marker,source in [
         data=one(data,marker,f'    PluginApi::SdhLiveTick({source});\n'+marker,pth+" tick")
     evals[pth]=data
 
+
+# Identify the actually instantiated custom FFX module, not the requested config.
+base_feature=file("OptiScaler/upscalers/IFeature.h")
+base_feature=one(base_feature,
+    "    virtual Upscaler GetUpscalerType() const = 0;",
+    "    virtual Upscaler GetUpscalerType() const = 0;\n    virtual std::string GetCustomUpscalerName() const { return {}; }",
+    "Active custom feature interface")
+ffx_custom={}
+for flavor in ("Dx12","Vk"):
+    hdr=f"OptiScaler/upscalers/ffx/FFXFeature_{flavor}.h"
+    cpp=f"OptiScaler/upscalers/ffx/FFXFeature_{flavor}.cpp"
+    classname=f"FFXFeature{flavor}"
+    h=file(hdr)
+    h=one(h,"    Upscaler GetUpscalerType() const final { return Upscaler::FFX; }",
+          "    Upscaler GetUpscalerType() const final { return Upscaler::FFX; }\n    std::string GetCustomUpscalerName() const override;",
+          f"{flavor} actual provider getter")
+    body=file(cpp)
+    body=one(body,f"{classname}::{classname}(",
+        f"std::string {classname}::GetCustomUpscalerName() const\n{{\n    return _customUpscaler ? _customUpscaler->name : std::string();\n}}\n\n{classname}::{classname}(",
+        f"{flavor} provider getter implementation")
+    ffx_custom[hdr]=h
+    ffx_custom[cpp]=body
+
 proj=file("OptiScaler/OptiScaler.vcxproj")
 proj=one(proj,'<ClCompile Include="menu\\menu_common.cpp" />','<ClCompile Include="plugins\\PluginApi.cpp" />\n    <ClCompile Include="menu\\menu_common.cpp" />',"MSBuild source")
 # Filter entries optional; compiler does not read this file.
@@ -135,7 +158,9 @@ stage={
     "OptiScaler/Config.h":cfg_h,"OptiScaler/Config.cpp":cfg,
     "OptiScaler/dllmain.cpp":dll,"OptiScaler/menu/menu_overlay_dx.cpp":dx,
     "OptiScaler/menu/menu_overlay_vk.cpp":vk,
-    "OptiScaler/OptiScaler.vcxproj":proj,**evals,
+    "OptiScaler/OptiScaler.vcxproj":proj,
+    "OptiScaler/upscalers/IFeature.h":base_feature,
+    **ffx_custom, **evals,
 }
 for path,data in stage.items():save(path,data)
 print("DEV19 patched",len(stage),"files against modern upstream; SDK ABI v2 and custom FFX enabled.")
