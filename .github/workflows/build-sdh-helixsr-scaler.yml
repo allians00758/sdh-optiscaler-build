@@ -23,7 +23,7 @@ jobs:
         run: |
           git clone https://github.com/lonewolf0622/HelixSR-Scaler.git upstream
           if ($LASTEXITCODE -ne 0) { throw 'Cannot clone OptiScaler' }
-          git -C upstream checkout --detach b05ce9522270f5d8d966e35f7659aca4ddfcbd7c
+          git -C upstream checkout --detach 453f005d2b9e51b1412647449aeb29219b3f04e1
           if ($LASTEXITCODE -ne 0) { throw 'Pinned HelixSR-Scaler 2.1.0 SHA not found' }
           git -C upstream submodule update --init --recursive
           if ($LASTEXITCODE -ne 0) { throw 'Cannot initialize submodules' }
@@ -50,7 +50,7 @@ jobs:
           Copy-Item asi/sdh-optiscaler-control.asi out/sdh-optiscaler-control-legacy.asi
           @"
           SDH Live API v2 experimental DLL for HelixSR Scaler 2.1.0
-          HelixSR-Scaler source: b05ce9522270f5d8d966e35f7659aca4ddfcbd7c
+          HelixSR-Scaler source: 453f005d2b9e51b1412647449aeb29219b3f04e1
           HelixSR-Scaler source tag: v2.1.0\n          Requires separate HelixSR 3.0 or newer runtime
           Target: Windows x64 (Steam Deck through Proton)
           Includes FSR4 Model Auto, INT8, INT8 RDNA2, INT8 Lite.
