@@ -36,7 +36,7 @@ def wrap(m):
     indent=m.group(1)
     return m.group(0)+(
         f'\n{indent}// HelixSR SDH protocol v2 is provided by the adapter in this DLL.\n'
-        f'{indent}if (fileName == L"sdh-optiscaler-control.asi")\n'
+        f'{indent}if (entry.path().filename().wstring() == L"sdh-optiscaler-control.asi")\n'
         f'{indent}{{\n'
         f'{indent}    auto entrypoint = reinterpret_cast<PFN_SdhInit>(\n'
         f'{indent}        KernelBaseProxy::GetProcAddress_()(hMod, "OptiPluginInit"));\n'
