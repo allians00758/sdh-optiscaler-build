@@ -12,10 +12,13 @@ dx=root/"OptiScaler/menu/menu_overlay_dx.cpp"
 main=root/"OptiScaler/dllmain.cpp"
 ffx_dx12=root/"OptiScaler/upscalers/ffx/FFXFeature_Dx12.cpp"
 ffx_vk=root/"OptiScaler/upscalers/ffx/FFXFeature_Vk.cpp"
+ngx_dx11=root/"OptiScaler/inputs/NVNGX_DLSS_Dx11.cpp"
+ngx_dx12=root/"OptiScaler/inputs/NVNGX_DLSS_Dx12.cpp"
+ngx_vk=root/"OptiScaler/inputs/NVNGX_DLSS_Vk.cpp"
 control=root/"OptiScaler/menu/SDHLiveBridge.inc"
 inc=Path(__file__).with_name("sdh_plugin_api_extension_master.inc")
 if not inc.is_file(): raise SystemExit("Missing staged SDH provider")
-for p in (vk, dx, main, ffx_dx12, ffx_vk, root/"OptiScaler/Config.h",root/"OptiScaler/State.h"):
+for p in (vk, dx, main, ffx_dx12, ffx_vk, ngx_dx11, ngx_dx12, ngx_vk, root/"OptiScaler/Config.h",root/"OptiScaler/State.h"):
     if not p.is_file(): raise SystemExit(f"Missing upstream source: {p}")
 if control.exists():raise SystemExit("Already patched; refusing to overwrite bridge")
 def once(s,needle,replacement,filename):
@@ -28,6 +31,9 @@ d=dx.read_text(encoding="utf-8")
 m=main.read_text(encoding="utf-8")
 x=ffx_dx12.read_text(encoding="utf-8")
 k=ffx_vk.read_text(encoding="utf-8")
+n11=ngx_dx11.read_text(encoding="utf-8")
+n12=ngx_dx12.read_text(encoding="utf-8")
+nvk=ngx_vk.read_text(encoding="utf-8")
 v=once(v,'#include "menu_common.h"','#include "menu_common.h"\n#include "SDHLiveBridge.inc"',vk)
 v=once(v,'bool MenuOverlayVk::QueuePresent(VkQueue queue, VkPresentInfoKHR* pPresentInfo)\n{',
     'bool MenuOverlayVk::QueuePresent(VkQueue queue, VkPresentInfoKHR* pPresentInfo)\n{\n    SDHLiveTick(2);',vk)
@@ -42,6 +48,12 @@ x=once(x,'bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCom
 k=once(k,'#include "FFXFeature_Vk.h"','#include "FFXFeature_Vk.h"\nextern void SDHLiveTick(uint32_t source);',ffx_vk)
 k=once(k,'bool FFXFeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InParameters)\n{','bool FFXFeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InParameters)\n{\n    SDHLiveTick(4);',ffx_vk)
 
+n11=once(n11,'#include <pch.h>','#include <pch.h>\nextern void SDHLiveTick(uint32_t source);',ngx_dx11)
+n12=once(n12,'#include <pch.h>','#include <pch.h>\nextern void SDHLiveTick(uint32_t source);',ngx_dx12)
+nvk=once(nvk,'#include <pch.h>','#include <pch.h>\nextern void SDHLiveTick(uint32_t source);',ngx_vk)
+n11=once(n11,'NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_EvaluateFeature(ID3D11DeviceContext* InDevCtx,\n                                                               const NVSDK_NGX_Handle* InFeatureHandle,\n                                                               NVSDK_NGX_Parameter* InParameters,\n                                                               PFN_NVSDK_NGX_ProgressCallback InCallback)\n{','NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D11_EvaluateFeature(ID3D11DeviceContext* InDevCtx,\n                                                               const NVSDK_NGX_Handle* InFeatureHandle,\n                                                               NVSDK_NGX_Parameter* InParameters,\n                                                               PFN_NVSDK_NGX_ProgressCallback InCallback)\n{\n    SDHLiveTick(5);',ngx_dx11)
+n12=once(n12,'NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InCmdList,\n                                                               const NVSDK_NGX_Handle* InFeatureHandle,\n                                                               NVSDK_NGX_Parameter* InParameters,\n                                                               PFN_NVSDK_NGX_ProgressCallback InCallback)\n{','NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_D3D12_EvaluateFeature(ID3D12GraphicsCommandList* InCmdList,\n                                                               const NVSDK_NGX_Handle* InFeatureHandle,\n                                                               NVSDK_NGX_Parameter* InParameters,\n                                                               PFN_NVSDK_NGX_ProgressCallback InCallback)\n{\n    SDHLiveTick(6);',ngx_dx12)
+nvk=once(nvk,'NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_EvaluateFeature(VkCommandBuffer InCmdList,\n                                                                const NVSDK_NGX_Handle* InFeatureHandle,\n                                                                NVSDK_NGX_Parameter* InParameters,\n                                                                PFN_NVSDK_NGX_ProgressCallback InCallback)\n{','NVSDK_NGX_API NVSDK_NGX_Result NVSDK_NGX_VULKAN_EvaluateFeature(VkCommandBuffer InCmdList,\n                                                                const NVSDK_NGX_Handle* InFeatureHandle,\n                                                                NVSDK_NGX_Parameter* InParameters,\n                                                                PFN_NVSDK_NGX_ProgressCallback InCallback)\n{\n    SDHLiveTick(7);',ngx_vk)
 head=r'''// SDH Live API v2 - OptiScaler Nightly 2026-10-21
 // Use native render thread for all Config/State mutations.
 // ABI: companion ASI exposes OptiPluginInit; 30 stable v1 slots, append-only v2.
@@ -110,5 +122,8 @@ dx.write_text(d,encoding="utf-8")
 main.write_text(m,encoding="utf-8")
 ffx_dx12.write_text(x,encoding="utf-8")
 ffx_vk.write_text(k,encoding="utf-8")
+ngx_dx11.write_text(n11,encoding="utf-8")
+ngx_dx12.write_text(n12,encoding="utf-8")
+ngx_vk.write_text(nvk,encoding="utf-8")
 control.write_text(head+inc.read_text(encoding="utf-8")+tail,encoding="utf-8")
 print("SDH Live API v2 integrated with DXGI/Vulkan render hooks.")
