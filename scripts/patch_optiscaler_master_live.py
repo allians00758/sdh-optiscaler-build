@@ -37,6 +37,7 @@ head=r'''// SDH Live API v2 - OptiScaler Nightly 2026-10-21
 #include <upscalers/IFeature.h>
 #include <upscalers/ffx/FFXFeature.h>
 #include <fsr4/FSR4Models.h>
+#include <helixsr/HelixSR.h>
 #include <windows.h>
 #include <algorithm>
 #include <atomic>
