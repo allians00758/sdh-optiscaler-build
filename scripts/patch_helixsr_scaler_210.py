@@ -67,7 +67,7 @@ proj=replace_once(proj,
     "MSBuild registration")
 source=(here/"SDHHelixLiveApi.cpp").read_text(encoding="utf-8")
 header=(here/"SDHHelixLiveApi.h").read_text(encoding="utf-8")
-for marker in ("core_tick=","ffx_available_versions","HLX FSR 4","unsupported_live_flag"):
+for marker in ("core_tick=","ffx_available_versions","hlx fsr 4","unsupported_live_flag"):
     if marker not in source:raise RuntimeError("Missing Live provider feature "+marker)
 for name,data in [(dll_name,dll),(dx_name,dx),(vk_name,vk),(proj_name,proj),
                   ("OptiScaler/plugins/SDHPluginApi.cpp",source),
