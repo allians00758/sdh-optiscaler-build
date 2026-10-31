@@ -1,7 +1,7 @@
-name: Build SDH HelixSR Scaler 2.1.0 Live API v2
+name: Build SDH HelixSR Scaler 2.1.0 Live API v2 HLX Switch
 on:
   push:
-    branches: [dev52-helixsr-scaler-210-live-v2]
+    branches: [dev54-helixsr-scaler-210-live-switches]
   workflow_dispatch:
 permissions:
   contents: read
@@ -62,7 +62,7 @@ jobs:
       - name: Upload unsigned test artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: SDH-HelixSR-Scaler210-LiveAPI-v2-${{ github.sha }}
+          name: SDH-HelixSR-Scaler210-LiveAPI-v2-HLX-${{ github.sha }}
           path: out/
           retention-days: 14
           if-no-files-found: error
