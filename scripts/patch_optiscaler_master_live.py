@@ -9,10 +9,13 @@ args=parser.parse_args()
 root=Path(args.source).resolve()
 vk=root/"OptiScaler/menu/menu_overlay_vk.cpp"
 dx=root/"OptiScaler/menu/menu_overlay_dx.cpp"
+main=root/"OptiScaler/dllmain.cpp"
+ffx_dx12=root/"OptiScaler/upscalers/ffx/FFXFeature_Dx12.cpp"
+ffx_vk=root/"OptiScaler/upscalers/ffx/FFXFeature_Vk.cpp"
 control=root/"OptiScaler/menu/SDHLiveBridge.inc"
 inc=Path(__file__).with_name("sdh_plugin_api_extension_master.inc")
 if not inc.is_file(): raise SystemExit("Missing staged SDH provider")
-for p in (vk, dx, root/"OptiScaler/Config.h",root/"OptiScaler/State.h"):
+for p in (vk, dx, main, ffx_dx12, ffx_vk, root/"OptiScaler/Config.h",root/"OptiScaler/State.h"):
     if not p.is_file(): raise SystemExit(f"Missing upstream source: {p}")
 if control.exists():raise SystemExit("Already patched; refusing to overwrite bridge")
 def once(s,needle,replacement,filename):
@@ -22,12 +25,22 @@ def once(s,needle,replacement,filename):
 
 v=vk.read_text(encoding="utf-8")
 d=dx.read_text(encoding="utf-8")
+m=main.read_text(encoding="utf-8")
+x=ffx_dx12.read_text(encoding="utf-8")
+k=ffx_vk.read_text(encoding="utf-8")
 v=once(v,'#include "menu_common.h"','#include "menu_common.h"\n#include "SDHLiveBridge.inc"',vk)
 v=once(v,'bool MenuOverlayVk::QueuePresent(VkQueue queue, VkPresentInfoKHR* pPresentInfo)\n{',
     'bool MenuOverlayVk::QueuePresent(VkQueue queue, VkPresentInfoKHR* pPresentInfo)\n{\n    SDHLiveTick(2);',vk)
 d=once(d,'#include "menu_common.h"','#include "menu_common.h"\nextern void SDHLiveTick(uint32_t source);',dx)
 d=once(d,'void MenuOverlayDx::Present(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags,\n                            const DXGI_PRESENT_PARAMETERS* pPresentParameters, IUnknown* pDevice, HWND hWnd, bool isUWP)\n{',
     'void MenuOverlayDx::Present(IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags,\n                            const DXGI_PRESENT_PARAMETERS* pPresentParameters, IUnknown* pDevice, HWND hWnd, bool isUWP)\n{\n    SDHLiveTick(1);',dx)
+
+m=once(m,'#include "dllmain.h"','#include "dllmain.h"\nextern void SDHLiveTryRegister();',main)
+m=once(m,'            LoadAsiPlugins();','            LoadAsiPlugins();\n            SDHLiveTryRegister();',main)
+x=once(x,'#include "FFXFeature_Dx12.h"','#include "FFXFeature_Dx12.h"\nextern void SDHLiveTick(uint32_t source);',ffx_dx12)
+x=once(x,'bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters)\n{','bool FFXFeatureDx12::EvaluateInternal(ID3D12GraphicsCommandList* InCommandList, NVSDK_NGX_Parameter* InParameters)\n{\n    SDHLiveTick(3);',ffx_dx12)
+k=once(k,'#include "FFXFeature_Vk.h"','#include "FFXFeature_Vk.h"\nextern void SDHLiveTick(uint32_t source);',ffx_vk)
+k=once(k,'bool FFXFeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InParameters)\n{','bool FFXFeatureVk::EvaluateInternal(VkCommandBuffer InCmdBuffer, NVSDK_NGX_Parameter* InParameters)\n{\n    SDHLiveTick(4);',ffx_vk)
 
 head=r'''// SDH Live API v2 - OptiScaler Nightly 2026-10-21
 // Use native render thread for all Config/State mutations.
@@ -71,8 +84,7 @@ static int sdh_plugin_identity=1;
 static bool sdh_asi_registered=false;
 static uint64_t sdh_next_discovery=0;
 
-void SDHLiveTick(uint32_t source) {
-    SdhLiveRenderTick(source);
+void SDHLiveTryRegister() {
     if(sdh_asi_registered)return;
     // Do not scan modules every frame when the companion ASI is missing.
     auto now=GetTickCount64();
@@ -85,11 +97,18 @@ void SDHLiveTick(uint32_t source) {
     if(!init)return;
     sdh_asi_registered=(init(&sdh_api_v2,&sdh_plugin_identity)!=FALSE);
 }
+void SDHLiveTick(uint32_t source) {
+    SdhLiveRenderTick(source);
+    SDHLiveTryRegister();
+}
 '''
 # Stage reads complete before committing any changes.
 if 'has_fsr4_model' not in inc.read_text(encoding="utf-8"):
     raise SystemExit("FSR4 model command missing in provider")
 vk.write_text(v,encoding="utf-8")
 dx.write_text(d,encoding="utf-8")
+main.write_text(m,encoding="utf-8")
+ffx_dx12.write_text(x,encoding="utf-8")
+ffx_vk.write_text(k,encoding="utf-8")
 control.write_text(head+inc.read_text(encoding="utf-8")+tail,encoding="utf-8")
 print("SDH Live API v2 integrated with DXGI/Vulkan render hooks.")
