@@ -150,6 +150,29 @@ static bool SdhChooseFfxVersion(const State& state, API api, std::string request
     return selected>=0;
 }
 
+// HelixSR 2.1.0 names the active HLX implementation in its FFX version
+// table. Never assume fixed indices: different HLX/AMD DLLs reorder it.
+static bool SdhChooseHelixFfx(const State& state, API api,
+                              const std::string& code, int& selected) {
+    const auto& versions=(api==Vulkan)?state.ffxUpscalerVersionsVk:state.ffxUpscalerVersionsDx12;
+    selected=-1;
+    for(size_t i=0;i<versions.names.size();++i) {
+        if(!versions.names[i])continue;
+        const std::string raw=SdhLower(versions.names[i]);
+        bool match=false;
+        if(code=="helixsr" || code=="hlx_fsr4")
+            match=raw.rfind("hlx fsr 4",0)==0;
+        else if(code=="hlx_ffx")
+            match=raw.rfind("hlx ffx",0)==0;
+        else if(code=="helix_dlss")
+            match=raw.rfind("helixsr",0)==0;
+        else if(code=="ffx")
+            match=raw.rfind("hlx",0)!=0 && raw.rfind("helixsr",0)!=0;
+        if(match){selected=static_cast<int>(i);return true;}
+    }
+    return false;
+}
+
 static bool SdhQueue(void* plugin,uint64_t seq,const char* command){
     if(!plugin||!seq||!command) return false;
     size_t len=0;while(len<8193 && command[len])++len;
@@ -277,6 +300,9 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
         if(norm=="xess")code="xess";
         else if(norm=="xess12")code="xess_12";
         else if(norm=="dlss")code="dlss";
+        else if(norm=="hlxdlss" || norm=="helixdlss")code="helix_dlss";
+        else if(norm=="hlxfsr4" || norm=="helixsr")code="helixsr";
+        else if(norm=="hlxffx")code="hlx_ffx";
         else if(norm=="dlss12")code="dlss_12";
         else if(norm=="fsr21" || norm=="fsr212")code="fsr21";
         else if(norm=="fsr22" || norm=="fsr221")code="fsr22";
@@ -296,7 +322,9 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
         const bool isVersionedFfx=(code.rfind("fsr4",0)==0 ||
                                    code.rfind("fsr3",0)==0 ||
                                    code.rfind("fsr2.3",0)==0);
-        if(isVersionedFfx) {
+        const bool isNamedHelixFfx=(code=="helixsr" || code=="hlx_ffx" ||
+                                    code=="helix_dlss" || code=="ffx");
+        if(isVersionedFfx || isNamedHelixFfx) {
             // OptiScaler loads the FFX SDK's version list lazily when its
             // menu first opens. Without the menu the list is empty when
             // switching *from XeSS/FSR22/DLSS*, although 2.3.4, 3.1.5 and
@@ -312,10 +340,27 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
             }
             if(ffxVersions.names.empty())
                 return "ok=0\nerror=ffx_version_query_failed\n";
-            if(!SdhChooseFfxVersion(state,state.api,code,ffxVersion))
-                return "ok=0\nerror=ffx_version_unavailable\n";
-            backend=(state.api==DX11)?Upscaler::FFX_on12:Upscaler::FFX;
-            ffxSpecified=true;
+            if(isNamedHelixFfx) {
+                if(!HelixSR::Installed())
+                    return "ok=0\nerror=helixsr_runtime_unavailable\n";
+                if(!SdhChooseHelixFfx(state,state.api,code,ffxVersion)) {
+                    // Older HelixSR builds have a separate helixsr.dll
+                    // and expose HLX DLSS as NVNGX, not as an FFX entry.
+                    if(code=="helix_dlss" && HelixSR::Found() &&
+                       state.NVNGX_DLSS_Path.has_value()) {
+                        backend=(state.api==DX12)?Upscaler::DLSS:Upscaler::DLSS_on12;
+                        ffxSpecified=false;
+                    } else return "ok=0\nerror=hlx_implementation_not_in_runtime_ffx_list\n";
+                } else {
+                    backend=(state.api==DX11)?Upscaler::FFX_on12:Upscaler::FFX;
+                    ffxSpecified=true;
+                }
+            } else {
+                if(!SdhChooseFfxVersion(state,state.api,code,ffxVersion))
+                    return "ok=0\nerror=ffx_version_unavailable\n";
+                backend=(state.api==DX11)?Upscaler::FFX_on12:Upscaler::FFX;
+                ffxSpecified=true;
+            }
         } else {
             backend=CodeToUpscalerFfx(code);
         }
@@ -537,6 +582,9 @@ static void SdhLiveRenderTick(uint32_t source){
             auto& state=State::Instance();
             snapshot+="active_backend="+(state.currentFeature ?
                 UpscalerToCode(state.currentFeature->GetUpscalerType()):std::string("none"))+"\n";
+            snapshot+="active_helix_upscaler="+HelixSR::ActiveUpscalerName()+"\n";
+            if(const char* helixFfx=HelixSR::ActiveFfxName())
+                snapshot+="active_helix_ffx_name="+std::string(helixFfx)+"\n";
             // Read the actual instantiated FFX version, not the requested
             // Config index. The selected index can change before reinit.
             if(state.currentFeature &&
