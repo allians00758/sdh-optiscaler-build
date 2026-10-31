@@ -532,6 +532,21 @@ static void SdhLiveRenderTick(uint32_t source){
             {
                 const auto& ffx=(current.api==Vulkan)?current.ffxUpscalerVersionsVk:current.ffxUpscalerVersionsDx12;
                 snapshot+="ffx_versions_count="+std::to_string(ffx.names.size())+"\n";
+                snapshot+="ffx_available_names=";
+                size_t namesCount=0;
+                for(const char* rawName:ffx.names) {
+                    if(!rawName || namesCount>=12)continue;
+                    std::string safe;
+                    for(const unsigned char c:std::string(rawName)) {
+                        if(c>=32 && c<127 && c!=',' && c!='=' && safe.size()<70)
+                            safe+=static_cast<char>(c);
+                    }
+                    if(!safe.empty()) {
+                        if(namesCount++)snapshot+=",";
+                        snapshot+=safe;
+                    }
+                }
+                snapshot+="\n";
                 snapshot+="ffx_available_versions=";
                 size_t count=0;
                 for(const char* name:ffx.names) {
