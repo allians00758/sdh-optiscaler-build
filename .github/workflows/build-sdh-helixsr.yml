@@ -1,0 +1,70 @@
+name: Build SDH HelixSR Scaler 2.1.0 Live API v2 (Windows x64)
+on:
+  push:
+    branches: [dev20-helixsr-scaler-210-live-v2]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sdh-helixsr-v2-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout integration code
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Fetch pinned HelixSR-Scaler 2.1.0
+        run: |
+          $ErrorActionPreference='Stop'
+          git clone --branch v2.1.0 --depth 1 --recurse-submodules https://github.com/lonewolf0622/HelixSR-Scaler.git upstream
+          if ($LASTEXITCODE -ne 0) { throw 'Clone failed' }
+          git -C upstream rev-parse HEAD
+      - name: Apply SDH source-only Live v2 integration
+        run: |
+          $ErrorActionPreference='Stop'
+          python scripts/patch_helixsr_scaler_210.py upstream
+          if ($LASTEXITCODE -ne 0) { throw 'HelixSR source patch failed' }
+          if (!(Test-Path 'upstream/OptiScaler/plugins/SDHPluginApi.cpp')) { throw 'Missing native SDH adapter' }
+      - name: Prepare MSBuild
+        uses: microsoft/setup-msbuild@v2
+      - name: Compile HelixSR Scaler Windows Release x64
+        working-directory: upstream
+        run: |
+          $ErrorActionPreference='Stop'
+          msbuild .\OptiScaler.sln /m:2 /p:Configuration=Release /p:Platform=x64 /verbosity:minimal
+          if ($LASTEXITCODE -ne 0) { throw 'HelixSR compile failed' }
+      - name: Package unsigned test DLL
+        run: |
+          $ErrorActionPreference='Stop'
+          $dlls=@(Get-ChildItem upstream -Recurse -File -Filter 'OptiScaler.dll' | Where-Object {$_.FullName -match '[\\/]x64[\\/]Release[\\/]' })
+          if ($dlls.Count -ne 1) {
+            $dlls | Select-Object FullName
+            throw "Expected one x64 Release OptiScaler.dll, found $($dlls.Count)"
+          }
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item $dlls[0].FullName 'out/dxgi.dll'
+          @"
+          SDH HelixSR-Scaler 2.1.0 + Live API v2
+          Source: https://github.com/lonewolf0622/HelixSR-Scaler (v2.1.0)
+          Native source changes: scripts/patch_helixsr_scaler_210.py
+          Runtime ASI: existing SDH bin/sdh-optiscaler-control.asi (not bundled here)
+          This is an UNSIGNED TEST DLL, not the official HelixSR binary.
+          Preserve the working HelixSR Scaler before testing. Do not touch helixsr.dll or shaders.
+          "@ | Set-Content -Path out/BUILD-INFO.txt
+          Get-FileHash -Algorithm SHA256 out/dxgi.dll | Out-String | Add-Content out/BUILD-INFO.txt
+      - name: Upload compiled unsigned test DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: SDH-HelixSR-Scaler-210-LiveAPI-v2-${{ github.sha }}
+          path: out/
+          if-no-files-found: error
+          retention-days: 14
