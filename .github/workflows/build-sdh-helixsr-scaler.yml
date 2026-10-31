@@ -1,7 +1,7 @@
-name: Build SDH HelixSR Scaler 2.1.0 Live API v2 HLX Live Handshake
+name: Build SDH HelixSR Scaler 2.1.0 Live API v2 HLX FFX Interop Live
 on:
   push:
-    branches: [dev55-helixsr-live-handshake-fix]
+    branches: [dev56-helixsr-ffx-live-dx12-routing]
   workflow_dispatch:
 permissions:
   contents: read
