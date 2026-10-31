@@ -132,7 +132,9 @@ static std::string SdhFfxVersionNumber(const char* raw) {
 }
 static bool SdhChooseFfxVersion(const State& state, API api, std::string requested, int& selected) {
     // No fixed memory signatures: query the live FFX version list provided by OptiScaler.
-    const auto& versions=(api==Vulkan)?state.ffxUpscalerVersionsVk:state.ffxUpscalerVersionsDx12;
+    // HelixSR FidelityFX always uses DX12 FFX (including Vulkan/DX11 interop).
+    const auto& versions=(api==Vulkan && !HelixSR::FsrDllFound())
+        ?state.ffxUpscalerVersionsVk:state.ffxUpscalerVersionsDx12;
     const bool requestMajor4=requested.rfind("fsr4",0)==0;
     const bool requestMajor3=requested.rfind("fsr3",0)==0;
     const bool requestMajor2=requested.rfind("fsr2.3",0)==0;
@@ -154,7 +156,9 @@ static bool SdhChooseFfxVersion(const State& state, API api, std::string request
 // table. Never assume fixed indices: different HLX/AMD DLLs reorder it.
 static bool SdhChooseHelixFfx(const State& state, API api,
                               const std::string& code, int& selected) {
-    const auto& versions=(api==Vulkan)?state.ffxUpscalerVersionsVk:state.ffxUpscalerVersionsDx12;
+    // HelixSR FidelityFX always uses DX12 FFX (including Vulkan/DX11 interop).
+    const auto& versions=(api==Vulkan && !HelixSR::FsrDllFound())
+        ?state.ffxUpscalerVersionsVk:state.ffxUpscalerVersionsDx12;
     selected=-1;
     for(size_t i=0;i<versions.names.size();++i) {
         if(!versions.names[i])continue;
@@ -331,11 +335,14 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
             // 4.1.1 may be installed. Use OptiScaler's native preflight.
             // This work is performed only for an explicit user command on
             // the render thread, never on every Present/tick.
-            const auto& ffxVersions=(state.api==Vulkan) ?
-                state.ffxUpscalerVersionsVk : state.ffxUpscalerVersionsDx12;
+            const bool helixFfxDx12=HelixSR::FsrDllFound();
+            const bool nativeVkFfx=(state.api==Vulkan && !helixFfxDx12);
+            const auto& ffxVersions=nativeVkFfx
+                ?state.ffxUpscalerVersionsVk:state.ffxUpscalerVersionsDx12;
             if(ffxVersions.names.empty()) {
-                if(state.api==Vulkan) FFXFeature::EnsureVersionsVulkan();
-                else if(state.api==DX11 || state.api==DX12) FFXFeature::EnsureVersionsDx12();
+                if(nativeVkFfx) FFXFeature::EnsureVersionsVulkan();
+                else if(state.api==DX11 || state.api==DX12 || helixFfxDx12)
+                    FFXFeature::EnsureVersionsDx12();
                 else return "ok=0\nerror=ffx_graphics_api_unavailable\n";
             }
             if(ffxVersions.names.empty())
@@ -352,13 +359,15 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
                         ffxSpecified=false;
                     } else return "ok=0\nerror=hlx_implementation_not_in_runtime_ffx_list\n";
                 } else {
-                    backend=(state.api==DX11)?Upscaler::FFX_on12:Upscaler::FFX;
+                    backend=(state.api==DX11 || (state.api==Vulkan && helixFfxDx12))
+                        ?Upscaler::FFX_on12:Upscaler::FFX;
                     ffxSpecified=true;
                 }
             } else {
                 if(!SdhChooseFfxVersion(state,state.api,code,ffxVersion))
                     return "ok=0\nerror=ffx_version_unavailable\n";
-                backend=(state.api==DX11)?Upscaler::FFX_on12:Upscaler::FFX;
+                backend=(state.api==DX11 || (state.api==Vulkan && helixFfxDx12))
+                        ?Upscaler::FFX_on12:Upscaler::FFX;
                 ffxSpecified=true;
             }
         } else {
@@ -514,7 +523,8 @@ static void SdhLiveRenderTick(uint32_t source){
             auto& current=State::Instance();
             // Advertise FFX 2.3 live switching only when FFX SDK reports
             // an actual 2.3.x implementation for this renderer/API.
-            const auto& candidates=(current.api==Vulkan)?current.ffxUpscalerVersionsVk:current.ffxUpscalerVersionsDx12;
+            const auto& candidates=(current.api==Vulkan && !HelixSR::FsrDllFound())
+                ?current.ffxUpscalerVersionsVk:current.ffxUpscalerVersionsDx12;
             bool hasFfx2=false;
             for(const auto* name:candidates.names){
                 if(name && SdhFfxVersionNumber(name).rfind("2.3",0)==0){hasFfx2=true;break;}
@@ -530,7 +540,8 @@ static void SdhLiveRenderTick(uint32_t source){
             // Observe the versions OptiScaler's running FFX SDK really exposed.
             // This is the decisive diagnostic for 3.1.5/2.3.4 missing live.
             {
-                const auto& ffx=(current.api==Vulkan)?current.ffxUpscalerVersionsVk:current.ffxUpscalerVersionsDx12;
+                const auto& ffx=(current.api==Vulkan && !HelixSR::FsrDllFound())
+                    ?current.ffxUpscalerVersionsVk:current.ffxUpscalerVersionsDx12;
                 snapshot+="ffx_versions_count="+std::to_string(ffx.names.size())+"\n";
                 snapshot+="ffx_available_names=";
                 size_t namesCount=0;
@@ -559,6 +570,8 @@ static void SdhLiveRenderTick(uint32_t source){
                 snapshot+="\n";
                 snapshot+="ffx_selected_index="+std::to_string(cfg->FfxUpscalerIndex.value_or_default())+"\n";
                 snapshot+="graphics_api="+std::to_string(static_cast<int>(current.api))+"\n";
+                snapshot+="ffx_table_api="+std::string(
+                    current.api==Vulkan && !HelixSR::FsrDllFound() ? "vulkan" : "dx12")+"\n";
             }
 
             snapshot+="sharpness_enabled="+std::to_string((int)cfg->OverrideSharpness.value_or_default())+"\n";
@@ -613,7 +626,8 @@ static void SdhLiveRenderTick(uint32_t source){
             snapshot+="requested_backend="+UpscalerToCode(state.newBackend)+"\n";
             if(state.currentFeature && (state.currentFeature->GetUpscalerType()==Upscaler::FFX ||
                                         state.currentFeature->GetUpscalerType()==Upscaler::FFX_on12)){
-                const auto& versions=(state.api==Vulkan)?state.ffxUpscalerVersionsVk:state.ffxUpscalerVersionsDx12;
+                const auto& versions=(state.api==Vulkan && !HelixSR::FsrDllFound())
+                    ?state.ffxUpscalerVersionsVk:state.ffxUpscalerVersionsDx12;
                 int index=cfg->FfxUpscalerIndex.value_or_default();
                 if(index>=0 && static_cast<size_t>(index)<versions.names.size() && versions.names[index])
                     snapshot+="selected_ffx_version="+std::string(versions.names[index])+"\n";
