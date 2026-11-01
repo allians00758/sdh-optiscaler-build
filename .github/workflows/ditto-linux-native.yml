@@ -1,0 +1,93 @@
+name: SDH DittoSR Native Linux Vulkan (experimental)
+on:
+  push:
+    branches: [native-linux-ditto-vulkan-poc]
+    paths:
+      - 'native-linux/**'
+      - '.github/workflows/ditto-linux-native.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: work/sdh
+      - uses: actions/checkout@v4
+        with:
+          repository: Vancete/DittoSR
+          ref: d053cd55891cdead6c306c9b282be7715bba7333
+          path: work/ditto
+          persist-credentials: false
+      - name: Install native toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends g++ libvulkan-dev unzip curl zip
+      - name: Install native Linux DXC for Vulkan SPIR-V
+        run: |
+          mkdir -p "$RUNNER_TEMP/dxc"
+          curl --retry 3 --fail --location \
+            'https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.9.2609/linux_dxc_2026_09_28.x86_x64.tar.gz' \
+            -o "$RUNNER_TEMP/dxc.tar.gz"
+          tar -xzf "$RUNNER_TEMP/dxc.tar.gz" -C "$RUNNER_TEMP/dxc"
+          "$RUNNER_TEMP/dxc/bin/dxc" -help | head -4 || true
+      - name: Stage Linux Vulkan port from upstream sources
+        run: python3 work/sdh/native-linux/port_ditto.py --source work/ditto
+      - name: Compile upstream HLSL to SPIR-V
+        shell: bash
+        run: |
+          set -euo pipefail
+          export LD_LIBRARY_PATH="$RUNNER_TEMP/dxc/lib:${LD_LIBRARY_PATH:-}"
+          DXC="$RUNNER_TEMP/dxc/bin/dxc"
+          SRC=work/ditto
+          GEN="$SRC/build/native_gen"
+          mkdir -p "$GEN"
+          FLAGS=(-nologo -spirv -fspv-target-env=vulkan1.1
+                 -fvk-b-shift 0 0 -fvk-t-shift 10 0 -fvk-u-shift 20 0 -fvk-s-shift 30 0
+                 -D DITTO_VK=1 -T cs_6_0 -E main -O3)
+          for s in convert change upscale; do
+            "$DXC" "${FLAGS[@]}" -Fh "$GEN/spv_${s}.h" -Vn "g_spv_${s}" "$SRC/shaders/${s}.hlsl"
+          done
+          for fmt in rgba16f rgba8 rgb10a2 r11g11b10f rgba32f; do
+            "$DXC" "${FLAGS[@]}" "-DOUTFMT=\"$fmt\"" -Fh "$GEN/spv_sharpen_${fmt}.h" \
+                  -Vn "g_spv_sharpen_${fmt}" "$SRC/shaders/sharpen.hlsl"
+          done
+      - name: Build native ELF x86_64 .so
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC=work/ditto
+          mkdir -p output
+          g++ -std=c++17 -O2 -fPIC -fvisibility=hidden -D_GNU_SOURCE \
+            -I"$SRC/src" -I"$SRC/build/native_gen" -I"$SRC/third_party/vulkan/include" \
+            -shared "$SRC/src/ffx_dll.cpp" "$SRC/src/dittosr_vk.cpp" \
+              "$SRC/src/common.cpp" "$SRC/src/linux_math.cpp" \
+            -o output/libdittosr_vk.so -ldl -pthread
+          file output/libdittosr_vk.so
+          nm -D output/libdittosr_vk.so | grep -E ' (ffx(CreateContext|DestroyContext|Configure|Query|Dispatch))$'
+      - name: Native Linux ABI smoke test (no GPU)
+        run: |
+          SRC=work/ditto
+          g++ -std=c++17 -I"$SRC/src" -I"$SRC/third_party/vulkan/include" \
+            work/sdh/native-linux/ffx_vk_smoke.cpp -o output/ffx_vk_smoke -ldl
+          output/ffx_vk_smoke "$(realpath output/libdittosr_vk.so)"
+      - name: Package isolated experimental build
+        run: |
+          mkdir -p package/SDH-DittoSR-Native-Linux
+          cp output/libdittosr_vk.so package/SDH-DittoSR-Native-Linux/
+          cp work/ditto/dittosr.ini work/ditto/LICENSE work/ditto/THIRD-PARTY-NOTICES.md \
+             package/SDH-DittoSR-Native-Linux/
+          cp work/sdh/native-linux/README.md package/SDH-DittoSR-Native-Linux/
+          cp output/ffx_vk_smoke package/SDH-DittoSR-Native-Linux/
+          cd package
+          zip -qr ../SDH-DittoSR-Native-Linux-v0.1.2-POC-x86_64.zip SDH-DittoSR-Native-Linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SDH-DittoSR-Native-Linux-v0.1.2-POC
+          path: SDH-DittoSR-Native-Linux-v0.1.2-POC-x86_64.zip
+          retention-days: 14
