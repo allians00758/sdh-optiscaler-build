@@ -70,16 +70,23 @@ jobs:
             -o output/libdittosr_vk.so -ldl -pthread
           file output/libdittosr_vk.so
           nm -D output/libdittosr_vk.so | grep -E ' (ffx(CreateContext|DestroyContext|Configure|Query|Dispatch))$'
+          g++ -std=c++17 -O2 -fPIC -fvisibility=hidden -D_GNU_SOURCE \
+            -I"$SRC/src" -I"$SRC/third_party/vulkan/include" \
+            -shared work/sdh/native-linux/optiscaler_ffx_linux.cpp \
+            -o output/libsdh_optiscaler_ffx.so -ldl -pthread
+          file output/libsdh_optiscaler_ffx.so
+          nm -D output/libsdh_optiscaler_ffx.so | grep -E '(ffxQuery|SDH_OptiScalerLinux_)'
       - name: Native Linux ABI smoke test (no GPU)
         run: |
           SRC=work/ditto
           g++ -std=c++17 -I"$SRC/src" -I"$SRC/third_party/vulkan/include" \
             work/sdh/native-linux/ffx_vk_smoke.cpp -o output/ffx_vk_smoke -ldl
           output/ffx_vk_smoke "$(realpath output/libdittosr_vk.so)"
+          output/ffx_vk_smoke "$(realpath output/libsdh_optiscaler_ffx.so)"
       - name: Package isolated experimental build
         run: |
           mkdir -p package/SDH-DittoSR-Native-Linux
-          cp output/libdittosr_vk.so package/SDH-DittoSR-Native-Linux/
+          cp output/libdittosr_vk.so output/libsdh_optiscaler_ffx.so package/SDH-DittoSR-Native-Linux/
           cp work/ditto/dittosr.ini work/ditto/LICENSE work/ditto/THIRD-PARTY-NOTICES.md \
              package/SDH-DittoSR-Native-Linux/
           cp work/sdh/native-linux/README.md package/SDH-DittoSR-Native-Linux/
