@@ -1,0 +1,66 @@
+name: SDH MAKO 5.0.0 Renderer — keep FG active in Steam/Decky menu
+on:
+  push:
+    branches: [dev58-mako50-fifo-no-menu-suspend]
+    paths:
+      - 'scripts/patch_mako50_menu_focus.py'
+      - '.github/workflows/build-sdh-mako50.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout SDH patch
+        uses: actions/checkout@v4
+      - name: Install build dependencies (64-bit and 32-bit)
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            git curl ca-certificates clang cmake ninja-build python3 pkg-config \
+            gcc-multilib g++-multilib libc6-dev-i386 \
+            libvulkan-dev libvulkan-dev:i386 \
+            libx11-dev libx11-dev:i386 \
+            libxcb1-dev libxcb1-dev:i386 mesa-common-dev
+      - name: Checkout pinned MAKO Renderer 5.0.0
+        run: |
+          git clone --depth 1 --recurse-submodules --branch render-v5.0.0 https://github.com/eugeniosegala/MAKO.git upstream
+          git -C upstream rev-parse HEAD | tee upstream-SHA.txt
+      - name: Apply and verify SDH no-menu-suspend patch
+        run: |
+          python3 scripts/patch_mako50_menu_focus.py upstream
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('upstream/engine/mako-render/src/swapchain/profile.cpp').read_text()
+          assert p.count('const bool suspended = false;') == 1
+          assert 'const bool suspended = eligible && focused == false;' not in p
+          assert 'this->steamMenuSuspended = suspended;' in p
+          print('PASS MAKO source focus policy')
+          PY
+      - name: Compile Linux 64-bit and 32-bit Vulkan layers
+        working-directory: upstream/engine
+        env:
+          CXX: clang++
+          MAKO_BUILD_JOBS: '2'
+        run: |
+          bash scripts/build-steamos-dev.sh --with-32-bit --jobs 2
+      - name: Package isolated test libraries (no auto-install)
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -D upstream/engine/build/steamos-dev/mako-render/libmako-render.so out/lib/libmako-render.so
+          install -D upstream/engine/build/steamos-dev-32/mako-render/libmako-render.so out/lib32/libmako-render.so
+          file out/lib/libmako-render.so out/lib32/libmako-render.so | tee out/BUILD-INFO.txt
+          sha256sum out/lib/libmako-render.so out/lib32/libmako-render.so | tee -a out/BUILD-INFO.txt
+          printf '%s\n' "MAKO 5.0.0 render-v5.0.0 + SDH focus patch (no Steam/Decky menu FG pause)" >> out/BUILD-INFO.txt
+          printf '%s\n' "Test on Steam Deck before integration; replace neither Flatpak extensions nor installed libraries automatically." >> out/BUILD-INFO.txt
+      - name: Upload isolated test artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SDH-MAKO-5.0.0-No-Menu-Suspend-${{ github.sha }}
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
