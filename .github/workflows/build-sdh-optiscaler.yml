@@ -1,7 +1,7 @@
-name: Build SDH OptiScaler 10 Live API v2 (Nightly 20261029)
+name: Build SDH OptiScaler 10 Live API v2 (Nightly 20261116)
 on:
   push:
-    branches: [dev51-nightly-20261029-live-v2]
+    branches: [dev57-optiscaler-nightly-20261116-live-v2]
   workflow_dispatch:
 permissions:
   contents: read
@@ -19,11 +19,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Fetch exact OptiScaler 2026-10-29 source and submodules
+      - name: Fetch exact OptiScaler 2026-11-16 source and submodules
         run: |
           git clone --single-branch --branch master https://github.com/optiscaler/OptiScaler.git upstream
           if ($LASTEXITCODE -ne 0) { throw 'Cannot clone OptiScaler' }
-          git -C upstream checkout --detach e57377fc75831d5c2fbb58d6a057a75702d78a95
+          git -C upstream checkout --detach 1e568bb3df081988416b8aa85fa4efe0b22c58cf
           if ($LASTEXITCODE -ne 0) { throw 'Pinned nightly base SHA not found' }
           git -C upstream submodule update --init --recursive
           if ($LASTEXITCODE -ne 0) { throw 'Cannot initialize submodules' }
@@ -50,8 +50,8 @@ jobs:
           Copy-Item asi/sdh-optiscaler-control.asi out/sdh-optiscaler-control-legacy.asi
           @"
           SDH Live API v2 experimental DLL for OptiScaler 10.0.0-pre1
-          OptiScaler source: e57377fc75831d5c2fbb58d6a057a75702d78a95
-          Nightly reference: nightly-20261029
+          OptiScaler source: 1e568bb3df081988416b8aa85fa4efe0b22c58cf
+          Nightly reference: nightly-20261116
           Target: Windows x64 (Steam Deck through Proton)
           Includes FSR4 Model Auto, INT8, INT8 RDNA2, INT8 Lite.
           FP8 is disallowed by SDH Steam Deck live-control.
@@ -62,7 +62,7 @@ jobs:
       - name: Upload unsigned test artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: SDH-OptiScaler10-Nightly20261029-LiveAPI-v2-${{ github.sha }}
+          name: SDH-OptiScaler10-Nightly20261116-LiveAPI-v2-${{ github.sha }}
           path: out/
           retention-days: 14
           if-no-files-found: error
