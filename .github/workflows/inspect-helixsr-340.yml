@@ -1,0 +1,48 @@
+name: Inspect official HelixSR 3.4.0 ZIP for SDH FrameGen integration
+on:
+  push:
+    branches: [dev66-helixsr-340-layout-audit]
+    paths: ['.github/workflows/inspect-helixsr-340.yml']
+  workflow_dispatch:
+permissions: { contents: read }
+jobs:
+  inspect:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download original HelixSR 3.4.0 and verify official sha256
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --silent --show-error             https://github.com/lonewolf0622/HelixSR/releases/download/v3.4.0/HelixSR-3.4.0.zip             --output HelixSR-3.4.0.zip
+          echo "aaf913bc42fea1386427dbd3ee2904512b5e6ab63896baaceb973a62a22da1e8  HelixSR-3.4.0.zip" | sha256sum -c -
+      - name: Inspect release paths, installer, configs without execution
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import zipfile, collections, stat
+          z=zipfile.ZipFile("HelixSR-3.4.0.zip")
+          names=z.namelist()
+          print("ZIP_TOTAL", len(names),"UNCOMPRESSED", sum(x.file_size for x in z.infolist()))
+          print("PREFIXES", collections.Counter("/".join(n.split("/")[:2]) for n in names).most_common(26))
+          print("FILES_OF_INTEREST")
+          for x in z.infolist():
+              n=x.filename
+              if any(k in n.lower() for k in ("helixsr-fg","helixsr-setup.sh","helixsr_setup.py","helixsr_install.py",
+                       "helixsr-scaler/optiscaler","hlx-fsr4","helixsr.ini","scaler/optiscaler.ini")):
+                  if x.is_dir():continue
+                  print(n, x.file_size, "symlink" if stat.S_ISLNK(x.external_attr>>16) else "")
+          def show(name,maxlines=250):
+              if name in names:
+                  data=z.read(name).decode("utf-8",errors="replace").splitlines()
+                  print("== START "+name+" == lines="+str(len(data)))
+                  for i,line in enumerate(data[:maxlines],1):print(str(i)+":"+line[:240])
+                  print("== END "+name+" ==")
+              else: print("MISSING",name)
+          show("HelixSR-3.4.0/helixsr-setup.sh",250)
+          show("HelixSR-3.4.0/HelixSR/helixsr.ini",100)
+          show("HelixSR-3.4.0/helixsr-scaler/OptiScaler.ini",110)
+          print("INSTALLER_NAMES",[n for n in names if n.endswith("helixsr_install.py") or n.endswith("helixsr_setup.py")])
+          print("SAFETY", "OK" if z.testzip() is None else "CORRUPT")
+          PY
