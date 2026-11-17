@@ -191,7 +191,7 @@ static uint32_t SdhSnapshot(void* plugin,char* output,uint32_t cap){
 static std::string SdhApplyOnRenderThread(std::string_view command){
     auto vals=SdhParse(command);
     // An unrecognized has_* flag must fail the whole command, never fake success.
-    constexpr std::string_view flags[]={"has_sharpness","has_contrast","has_motion_sharpness", "has_fg_enabled","has_quality","has_scale","has_shader","has_backend","has_upscaler","has_upscaler_backend","has_fg_input","has_fg_output","has_latencyflex_mode","has_resource_barrier_fix","has_color_space","has_fsr4_preset","has_fsr4_model"};
+    constexpr std::string_view flags[]={"has_sharpness","has_contrast","has_motion_sharpness", "has_fg_enabled","has_quality","has_scale","has_shader","has_backend","has_upscaler","has_upscaler_backend","has_fg_input","has_fg_output","has_latencyflex_mode","has_resource_barrier_fix","has_color_space","has_fsr4_preset","has_fsr4_model","has_anr_multiplier"};
     bool requested=false;
     {
         std::string names;
@@ -259,6 +259,13 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
                 name=="localcontrast")
             {shaderOn=true;shader=SharpenShader::LocalContrastDepthAware;}
         else return "ok=0\nerror=invalid_shader\n";
+    }
+    int anrMultiplier=-1;
+    if(SdhFlag(vals,"has_anr_multiplier")) {
+        const auto raw=SdhGet(vals,"anr_multiplier");
+        if(raw=="0")anrMultiplier=0;
+        else if(raw.size()==1 && raw[0]>='2' && raw[0]<='6')anrMultiplier=raw[0]-'0';
+        else return "ok=0\nerror=invalid_anr_multiplier\n";
     }
     bool hasBackend=SdhWantsBackend(vals);
     Upscaler backend=Upscaler::Reset;
@@ -361,6 +368,13 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
         else return "ok=0\nerror=invalid_latencyflex_mode\n";
     }
 
+    if(anrMultiplier>=0) {
+        const auto selected=SdhLower(state.activeFgNvngxCustom);
+        if(state.activeFgInput!=FGInput::NvngxFG || selected!="apex neural rendering fg")
+            return "ok=0\nerror=anr_fg_not_active_live\n";
+        if(!StreamlineHooks::isDlssgHooked())
+            return "ok=0\nerror=anr_streamline_hook_unavailable\n";
+    }
     // OptiScaler's FSR 4 menu only exposes these controls for a running
     // FFX feature reporting major version >=4. Reject old FSR backends.
     const bool wantsFsr4Space=SdhFlag(vals,"has_color_space");
@@ -480,9 +494,16 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
         if(!hasBackend)state.newBackend=state.currentFeature->GetUpscalerType();
         for(auto& value:state.changeBackend)value.second=true;
     }
+    if(anrMultiplier>=0) {
+        // Streamline DLSSG consumes generated frames PER real frame, 0=Off, 1=x2, .. 5=x6.
+        cfg->FGDLSSGOverrideInterpolationCount=(anrMultiplier==0?0:anrMultiplier-1);
+        StreamlineHooks::updateDlssgOptions();
+    }
     // 'ok' means Config updated on render thread, not that a renderer was
     // definitively recreated; expose requested recreation separately.
     if(recreate) return "ok=1\napply_stage=renderer_reinit_requested\n";
+    if(anrMultiplier>=0)
+        return "ok=1\napply_stage=anr_streamline_options_reapplied\n";
     if(SdhFlag(vals,"has_latencyflex_mode"))return "ok=1\napply_stage=low_latency_config_updated\n";
     return "ok=1\napply_stage=render_config_updated\n";
 }
@@ -499,7 +520,7 @@ static void SdhLiveRenderTick(uint32_t source){
             for(const auto* name:candidates.names){
                 if(name && SdhFfxVersionNumber(name).rfind("2.3",0)==0){hasFfx2=true;break;}
             }
-            std::string snapshot="capabilities=sharpness,contrast,motion_sharpness,fg_enabled,quality,scale,shader,backend,latencyflex_mode";
+            std::string snapshot="capabilities=sharpness,contrast,motion_sharpness,fg_enabled,quality,scale,shader,backend,latencyflex_mode,custom_upscaler,anr_multiplier";
             const bool fsr4Active=(current.currentFeature &&
                 (current.currentFeature->GetUpscalerType()==Upscaler::FFX ||
                  current.currentFeature->GetUpscalerType()==Upscaler::FFX_on12) &&
@@ -537,6 +558,11 @@ static void SdhLiveRenderTick(uint32_t source){
             snapshot+="scale_enabled="+std::to_string((int)cfg->OutputScalingEnabled.value_or_default())+"\n";
             snapshot+="scale="+std::to_string(cfg->OutputScalingMultiplier.value_or_default())+"\n";
             snapshot+="fg_enabled="+std::to_string((int)cfg->IsFGEnabled())+"\n";
+            snapshot+="anr_multiplier_requested="+std::to_string(
+                cfg->FGDLSSGOverrideInterpolationCount.has_value()?
+                (cfg->FGDLSSGOverrideInterpolationCount.value()==0?0:
+                 cfg->FGDLSSGOverrideInterpolationCount.value()+1):2)+"\n";
+            snapshot+="active_fg_nvngx_custom="+current.activeFgNvngxCustom+"\n";
             // This is configured/requested state, never mislabel as confirmed active renderer model.
             snapshot+="requested_fsr4_model="+(cfg->Fsr4Model.has_value()?
                 std::to_string(static_cast<int>(cfg->Fsr4Model.value())):std::string("auto"))+"\n";
