@@ -1,0 +1,59 @@
+name: Inspect official HelixSR 3.4.1 FG installer layout
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/inspect-helixsr-341-setup.yml
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Download and hash-check upstream release
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --silent --show-error \
+            -o /tmp/HelixSR-3.4.1.zip \
+            https://github.com/lonewolf0622/HelixSR/releases/download/v3.4.1/HelixSR-3.4.1.zip
+          echo "31ab3fcee0aa385712c123c6717dc579c60aeaeff40f705dbe91753f96ac46da  /tmp/HelixSR-3.4.1.zip" | sha256sum --check
+      - name: Inspect official paths and flags without executing installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p inspection
+          python3 - <<'PY'
+          import pathlib,zipfile
+          src=pathlib.Path('/tmp/HelixSR-3.4.1.zip')
+          out=pathlib.Path('inspection')
+          with zipfile.ZipFile(src) as z:
+              names=z.namelist()
+              (out/'relevant-paths.txt').write_text('\n'.join(n for n in names if any(k in n.casefold() for k in ('fg','helixsr-setup','helixsr_install','helixsr_setup.py','hlx','scaler','streamline')))[:1000000])
+              print('TOTAL ENTRIES:',len(names))
+              print('FG PATHS:', [n for n in names if 'helixsr-fg' in n.lower()][:55])
+              print('FSRFG PATHS:', [n for n in names if 'helixsr-fsrfg' in n.lower()][:55])
+              for name in names:
+                  base=name.rsplit('/',1)[-1]
+                  if base in ('helixsr-setup.sh','helixsr_setup.py','helixsr_install.py','helixsr_prepare.py','fg_setup.py'):
+                      data=z.read(name)
+                      if len(data)<2000000:
+                          p=out/(name.replace('/','__'))
+                          p.write_bytes(data)
+                          print('EXTRACTED',name,len(data))
+                          txt=data.decode('utf8','replace')
+                          for flag in ('--no-fg','no_fg','no-fg','fg_enabled','helixsr-fg','HelixSR-fsrfg'):
+                              if flag in txt:
+                                  print('TOKEN',base,flag,'COUNT',txt.count(flag))
+              print('Files extracted:',[x.name for x in out.iterdir()])
+          PY
+      - name: Upload source-only inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: HelixSR-341-Official-Setup-Inspection
+          path: inspection/
+          retention-days: 14
