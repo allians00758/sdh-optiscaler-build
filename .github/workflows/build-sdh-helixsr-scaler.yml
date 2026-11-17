@@ -1,7 +1,7 @@
-name: Build SDH HelixSR Scaler 2.3.0 Live API v2 HLX FFX Interop Live
+name: Build SDH HelixSR-Scaler 2.3.0 Live API HelixSR-FG multiplier
 on:
   push:
-    branches: [dev61-helixsr-scaler-230-live-v2]
+    branches: [dev67-helixsr-scaler230-fg-mfg-live]
   workflow_dispatch:
 permissions:
   contents: read
@@ -62,7 +62,7 @@ jobs:
       - name: Upload unsigned test artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: SDH-HelixSR-Scaler230-LiveAPI-v2-HLX-${{ github.sha }}
+          name: SDH-HelixSR-Scaler230-HelixFG-MFG-Live-v2-${{ github.sha }}
           path: out/
           retention-days: 14
           if-no-files-found: error
