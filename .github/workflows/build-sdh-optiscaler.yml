@@ -1,7 +1,7 @@
-name: SDH OptiScaler Live API v2 custom + ANR MFG 20261116
+name: SDH OptiScaler active custom provider Live readback
 on:
   push:
-    branches: [dev65-optiscaler-live-custom-anr-mfg]
+    branches: [dev68-optiscaler-custom-active-readback]
   workflow_dispatch:
 permissions:
   contents: read
@@ -62,7 +62,7 @@ jobs:
       - name: Upload unsigned test artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: SDH-OptiScaler10-ANR-MFG-Custom-LiveAPI-v2-${{ github.sha }}
+          name: SDH-OptiScaler10-ActiveCustom-LiveAPI-v2-${{ github.sha }}
           path: out/
           retention-days: 14
           if-no-files-found: error
