@@ -1,7 +1,7 @@
-name: Build SDH HelixSR Scaler 2.1.0 Live API v2 HLX FFX Interop Live
+name: Build SDH HelixSR Scaler 2.3.0 Live API v2 HLX FFX Interop Live
 on:
   push:
-    branches: [dev56-helixsr-ffx-live-dx12-routing]
+    branches: [dev61-helixsr-scaler-230-live-v2]
   workflow_dispatch:
 permissions:
   contents: read
@@ -19,12 +19,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Fetch exact HelixSR-Scaler 2.1.0 source and submodules
+      - name: Fetch exact HelixSR-Scaler 2.3.0 source and submodules
         run: |
           git clone https://github.com/lonewolf0622/HelixSR-Scaler.git upstream
           if ($LASTEXITCODE -ne 0) { throw 'Cannot clone OptiScaler' }
-          git -C upstream checkout --detach 453f005d2b9e51b1412647449aeb29219b3f04e1
-          if ($LASTEXITCODE -ne 0) { throw 'Pinned HelixSR-Scaler 2.1.0 SHA not found' }
+          git -C upstream checkout --detach 807aeb5d6d256b31d633ef572d88ae48deef3186
+          if ($LASTEXITCODE -ne 0) { throw 'Pinned HelixSR-Scaler 2.3.0 SHA not found' }
           git -C upstream submodule update --init --recursive
           if ($LASTEXITCODE -ne 0) { throw 'Cannot initialize submodules' }
       - name: Port SDH Live API v2 into HelixSR renderer
@@ -49,9 +49,9 @@ jobs:
           Copy-Item $dll out/dxgi.dll
           Copy-Item asi/sdh-optiscaler-control.asi out/sdh-optiscaler-control-legacy.asi
           @"
-          SDH Live API v2 experimental DLL for HelixSR Scaler 2.1.0
-          HelixSR-Scaler source: 453f005d2b9e51b1412647449aeb29219b3f04e1
-          HelixSR-Scaler source tag: v2.1.0\n          Requires separate HelixSR 3.0 or newer runtime
+          SDH Live API v2 experimental DLL for HelixSR Scaler 2.3.0
+          HelixSR-Scaler source: 807aeb5d6d256b31d633ef572d88ae48deef3186
+          HelixSR-Scaler source tag: v2.3.0\n          Requires separate HelixSR 3.0 or newer runtime
           Target: Windows x64 (Steam Deck through Proton)
           Includes FSR4 Model Auto, INT8, INT8 RDNA2, INT8 Lite.
           FP8 is disallowed by SDH Steam Deck live-control.
@@ -62,7 +62,7 @@ jobs:
       - name: Upload unsigned test artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: SDH-HelixSR-Scaler210-LiveAPI-v2-HLX-${{ github.sha }}
+          name: SDH-HelixSR-Scaler230-LiveAPI-v2-HLX-${{ github.sha }}
           path: out/
           retention-days: 14
           if-no-files-found: error
