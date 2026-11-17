@@ -1,7 +1,7 @@
-name: Build SDH OptiScaler 10 Live API v2 (Nightly 20261116)
+name: SDH OptiScaler Live API v2 custom + ANR MFG 20261116
 on:
   push:
-    branches: [dev57-optiscaler-nightly-20261116-live-v2]
+    branches: [dev65-optiscaler-live-custom-anr-mfg]
   workflow_dispatch:
 permissions:
   contents: read
@@ -62,7 +62,7 @@ jobs:
       - name: Upload unsigned test artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: SDH-OptiScaler10-Nightly20261116-LiveAPI-v2-${{ github.sha }}
+          name: SDH-OptiScaler10-ANR-MFG-Custom-LiveAPI-v2-${{ github.sha }}
           path: out/
           retention-days: 14
           if-no-files-found: error
