@@ -43,7 +43,12 @@ once(
         else if(value=="2"||value=="3"||value=="4"||value=="5"||value=="6")
             helixMultiplier=std::stoi(value);
         else return "ok=0\\nerror=invalid_helix_multiplier\\n";
-        if(state.activeFgNvngx!=FGNvngxReplacement::HelixSR)
+        // HelixSR 3.4.1 ships FG as a custom DLSSG provider in
+        // OptiScaler/custom/HelixSR-FG/dlssg, not the legacy built-in FG.
+        const bool helixFgActive=state.activeFgNvngx==FGNvngxReplacement::HelixSR ||
+            (state.activeFgNvngx==FGNvngxReplacement::Custom &&
+             _stricmp(state.activeFgNvngxCustom.c_str(),"HelixSR-FG")==0);
+        if(!helixFgActive)
             return "ok=0\\nerror=helixsr_fg_not_active\\n";
         if(state.activeFgInput!=FGInput::NvngxFG &&
            state.activeFgInput!=FGInput::DLSSG)
@@ -71,7 +76,9 @@ once(
 once(
  '            if(hasFfx2)snapshot+=",ffx2";',
  '''            if(hasFfx2)snapshot+=",ffx2";
-            if(current.activeFgNvngx==FGNvngxReplacement::HelixSR &&
+            if((current.activeFgNvngx==FGNvngxReplacement::HelixSR ||
+                (current.activeFgNvngx==FGNvngxReplacement::Custom &&
+                 _stricmp(current.activeFgNvngxCustom.c_str(),"HelixSR-FG")==0)) &&
                (current.activeFgInput==FGInput::NvngxFG ||
                 current.activeFgInput==FGInput::DLSSG))
                 snapshot+=",helix_multiplier";'''
