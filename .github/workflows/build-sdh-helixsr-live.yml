@@ -41,7 +41,7 @@ jobs:
 
       - name: Apply original SDH Live API v2 and HelixSR 2.3.1 adaptation
         run: |
-          python scripts/patch_optiscaler_plugin_api.py upstream
+          python scripts/run_base_helixsr231.py upstream
           if ($LASTEXITCODE -ne 0) { throw "Base SDH Live patch failed" }
           python scripts/patch_helixsr_live231.py upstream
           if ($LASTEXITCODE -ne 0) { throw "HelixSR adaptation failed" }
