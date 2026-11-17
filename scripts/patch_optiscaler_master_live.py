@@ -10,9 +10,12 @@ root=Path(args.source).resolve()
 vk=root/"OptiScaler/menu/menu_overlay_vk.cpp"
 dx=root/"OptiScaler/menu/menu_overlay_dx.cpp"
 control=root/"OptiScaler/menu/SDHLiveBridge.inc"
+feature_header=root/"OptiScaler/upscalers/IFeature.h"
+ffx_dx12_header=root/"OptiScaler/upscalers/ffx/FFXFeature_Dx12.h"
+ffx_vk_header=root/"OptiScaler/upscalers/ffx/FFXFeature_Vk.h"
 inc=Path(__file__).with_name("sdh_plugin_api_extension_master.inc")
 if not inc.is_file(): raise SystemExit("Missing staged SDH provider")
-for p in (vk, dx, root/"OptiScaler/Config.h",root/"OptiScaler/State.h"):
+for p in (vk, dx, feature_header, ffx_dx12_header, ffx_vk_header, root/"OptiScaler/Config.h",root/"OptiScaler/State.h"):
     if not p.is_file(): raise SystemExit(f"Missing upstream source: {p}")
 if control.exists():raise SystemExit("Already patched; refusing to overwrite bridge")
 def once(s,needle,replacement,filename):
@@ -92,5 +95,26 @@ if 'has_fsr4_model' not in inc.read_text(encoding="utf-8"):
     raise SystemExit("FSR4 model command missing in provider")
 vk.write_text(v,encoding="utf-8")
 dx.write_text(d,encoding="utf-8")
+# Only the instantiated, initialized FFX feature can identify a REAL
+# running custom DLL. Config::CustomUpscaler is merely a requested name
+# and can change ahead of the native renderer, so never use it to release
+# the Decky slider lock.
+feature=feature_header.read_text(encoding="utf-8")
+feature=once(feature,'    virtual API Api() const = 0;',
+             '    virtual API Api() const = 0;\\n'
+             '    virtual std::string SdhActiveCustomUpscaler() const { return {}; }',feature_header)
+ffx_dx12=ffx_dx12_header.read_text(encoding="utf-8")
+ffx_dx12=once(ffx_dx12,'    API Api() const override { return IFeature_Dx12::Api(); }',
+              '    API Api() const override { return IFeature_Dx12::Api(); }\\n'
+              '    std::string SdhActiveCustomUpscaler() const override { return _customUpscaler ? _customUpscaler->name : std::string{}; }',
+              ffx_dx12_header)
+ffx_vk=ffx_vk_header.read_text(encoding="utf-8")
+ffx_vk=once(ffx_vk,'    API Api() const override { return IFeature_Vk::Api(); }',
+            '    API Api() const override { return IFeature_Vk::Api(); }\\n'
+            '    std::string SdhActiveCustomUpscaler() const override { return _customUpscaler ? _customUpscaler->name : std::string{}; }',
+            ffx_vk_header)
+feature_header.write_text(feature,encoding="utf-8")
+ffx_dx12_header.write_text(ffx_dx12,encoding="utf-8")
+ffx_vk_header.write_text(ffx_vk,encoding="utf-8")
 control.write_text(head+inc.read_text(encoding="utf-8")+tail,encoding="utf-8")
 print("SDH Live API v2 integrated with DXGI/Vulkan render hooks.")
