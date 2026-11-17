@@ -104,6 +104,27 @@ change(
            !state.NVNGX_DLSS_Path.has_value() && !(wantsHlxDlss && HelixSR::Found()))
             return "ok=0\\nerror=dlss_binary_unavailable\\n";'''
 )
+
+# On HelixSR, the FFX table is NOT just numeric versions: its HLX entry
+# needs its raw label for authoritative per-game INI index persistence.
+# Keep the same output length as the generic version list: replace rather
+# than duplicate the diagnostic line. No guessed FFX indices.
+change(
+'                snapshot+="ffx_available_versions=";',
+'                snapshot+=(HelixSR::Installed()?"ffx_available_names=":"ffx_available_versions=");'
+)
+change(
+'''                    auto version=SdhFfxVersionNumber(name);
+                    if(version.empty() || version.size()>32)continue;
+                    if(count++)snapshot+=",";
+                    snapshot+=version;''',
+'''                    std::string version=HelixSR::Installed()?std::string(name):SdhFfxVersionNumber(name);
+                    if(version.empty())continue;
+                    if(version.size()>34)version.resize(34);
+                    if(count++)snapshot+=",";
+                    snapshot+=version;'''
+)
+
 # Snapshot: distinguish actual HelixSR FFX target from a generic 'ffx'.
 # Readback is skipped while a change is pending, to avoid confirming stale backend.
 change(
