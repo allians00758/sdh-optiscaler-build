@@ -62,7 +62,8 @@ jobs:
               out=pathlib.Path('out')/name
               out.parent.mkdir(parents=True,exist_ok=True)
               out.write_bytes(z.read(original))
-          print('FG_SETUP_RELATED', [n for n in z.namelist() if '/fg/' in n.lower() or 'fg_setup' in n.lower() or 'framegen' in n.lower() or 'nvngx' in n.lower()])\n          print('extracted text configs', len(wanted))
+          print('FG_SETUP_RELATED', [n for n in z.namelist() if '/fg/' in n.lower() or 'fg_setup' in n.lower() or 'framegen' in n.lower() or 'nvngx' in n.lower()])
+          print('extracted text configs', len(wanted))
           PY
       - uses: actions/upload-artifact@v4
         with:
