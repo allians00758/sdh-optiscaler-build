@@ -59,6 +59,8 @@ once(
             helixMultiplier==0?0:helixMultiplier-1);
         cfg->FGEnabled.set_volatile_value(helixMultiplier!=0);
         state.fgChanged=true;
+        // Forward to Streamline immediately: the game may not call SetOptions again.
+        StreamlineHooks::updateDlssgOptions();
     }
     if(SdhFlag(vals,"has_latencyflex_mode")){
         cfg->FN_LatencyFlexMode=latencyMode;"""
@@ -89,4 +91,14 @@ once(
  '                      key.find("fsr4_preset")!=std::string::npos ||\n                      key.find("helix_multiplier")!=std::string::npos;'
 )
 inc.write_text(s,encoding="utf-8")
+
+# The re-application lives in StreamlineHooks, not in Config. Pull its
+# declaration into PluginApi.cpp *outside* the anonymous-namespace include.
+impl=src/"OptiScaler/plugins/PluginApi.cpp"
+cpp=impl.read_text(encoding="utf-8")
+inc_marker='#include "upscalers/ffx/FFXFeature.h"'
+if cpp.count(inc_marker)!=1:
+    raise SystemExit("Unexpected HelixSR Streamline include anchor")
+cpp=cpp.replace(inc_marker,inc_marker+'\n#include "hooks/Streamline_Hooks.h"',1)
+impl.write_text(cpp,encoding="utf-8")
 print("HelixSR 2.3.1 SDH Live API v2 adaptation PASS")
