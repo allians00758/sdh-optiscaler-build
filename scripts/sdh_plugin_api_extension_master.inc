@@ -586,6 +586,13 @@ static void SdhLiveRenderTick(uint32_t source){
                  cfg->SharpnessShader.value_or_default()==SharpenShader::DepthAware?"da":"lcda") :
                 "default")+"\n";
             auto& state=State::Instance();
+            // Native initialized feature owns the active custom provider.
+            // The requested Config name can change before reinit finishes, so
+            // do not promote selected_custom_upscaler to confirmation.
+            std::string actualCustom;
+            if(state.currentFeature && state.currentFeature->IsInited())
+                actualCustom=state.currentFeature->SdhActiveCustomUpscaler();
+            snapshot+="active_custom_upscaler="+actualCustom+"\n";
             snapshot+="selected_custom_upscaler="+CustomProviders::NameSetting(state.api).value_or("")+"\n";
             snapshot+="active_backend="+(state.currentFeature ?
                 UpscalerToCode(state.currentFeature->GetUpscalerType()):std::string("none"))+"\n";
