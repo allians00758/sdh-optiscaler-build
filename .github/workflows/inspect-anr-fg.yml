@@ -1,0 +1,31 @@
+name: Inspect official ANR FG V.B18 addon (metadata only)
+on:
+  push:
+    branches: [dev59-anr-fg-vb18-inspect]
+    paths: ['.github/workflows/inspect-anr-fg.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Fetch/check official release, inspect layout and installer
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=https://github.com/apex-compute/ANR/releases/download/FG-V.B18
+          curl -fSL --retry 3 "$base/SHA256SUMS.txt" -o SHA256SUMS.txt
+          curl -fSL --retry 3 "$base/anr-fg-V.B18-addon.zip" -o anr-fg-V.B18-addon.zip
+          echo '=== OFFICIAL CHECKSUMS ==='
+          cat SHA256SUMS.txt
+          grep 'anr-fg-V.B18-addon.zip' SHA256SUMS.txt | sha256sum --check
+          echo '=== ZIP FILES ==='
+          unzip -Z -1 anr-fg-V.B18-addon.zip | head -100
+          echo '=== INSTALL SCRIPT TEXT ==='
+          item="$(unzip -Z -1 anr-fg-V.B18-addon.zip | grep -E '(^|/)install\.sh$' | head -1)"
+          if [ -n "$item" ]; then unzip -p anr-fg-V.B18-addon.zip "$item" | head -260; fi
+          echo '=== OPTIONAL DOCUMENTATION / LICENCE ITEMS ==='
+          unzip -Z -1 anr-fg-V.B18-addon.zip | grep -Ei '(license|notice|readme|testers|install|\.ini$)' | head -80 || true
+          echo '=== INSTALL CHECKS ==='
+          unzip -t anr-fg-V.B18-addon.zip | tail -2
