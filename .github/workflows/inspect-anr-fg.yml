@@ -1,7 +1,7 @@
-name: Inspect official ANR FG V.B18 addon (metadata only)
+name: Inspect official ANR FG V.B19 addon (metadata only)
 on:
   push:
-    branches: [dev59-anr-fg-vb18-inspect]
+    branches: [dev62-anr-multiplier-live-inspect]
     paths: ['.github/workflows/inspect-anr-fg.yml']
   workflow_dispatch:
 permissions:
@@ -14,18 +14,26 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base=https://github.com/apex-compute/ANR/releases/download/FG-V.B18
+          base=https://github.com/apex-compute/ANR/releases/download/FG-V.B19
           curl -fSL --retry 3 "$base/SHA256SUMS.txt" -o SHA256SUMS.txt
-          curl -fSL --retry 3 "$base/anr-fg-V.B18-addon.zip" -o anr-fg-V.B18-addon.zip
+          curl -fSL --retry 3 "$base/anr-fg-V.B19-addon.zip" -o anr-fg-V.B19-addon.zip
           echo '=== OFFICIAL CHECKSUMS ==='
           cat SHA256SUMS.txt
-          grep 'anr-fg-V.B18-addon.zip' SHA256SUMS.txt | sha256sum --check
+          grep 'anr-fg-V.B19-addon.zip' SHA256SUMS.txt | sha256sum --check
           echo '=== ZIP FILES ==='
-          unzip -Z -1 anr-fg-V.B18-addon.zip | head -100
+          unzip -Z -1 anr-fg-V.B19-addon.zip | head -100
           echo '=== INSTALL SCRIPT TEXT ==='
-          item="$(unzip -Z -1 anr-fg-V.B18-addon.zip | grep -E '(^|/)install\.sh$' | head -1)"
-          if [ -n "$item" ]; then unzip -p anr-fg-V.B18-addon.zip "$item" | head -260; fi
+          item="$(unzip -Z -1 anr-fg-V.B19-addon.zip | grep -E '(^|/)install\.sh$' | head -1)"
+          if [ -n "$item" ]; then unzip -p anr-fg-V.B19-addon.zip "$item" | head -260; fi
           echo '=== OPTIONAL DOCUMENTATION / LICENCE ITEMS ==='
-          unzip -Z -1 anr-fg-V.B18-addon.zip | grep -Ei '(license|notice|readme|testers|install|\.ini$)' | head -80 || true
+          unzip -Z -1 anr-fg-V.B19-addon.zip | grep -Ei '(license|notice|readme|testers|install|\.ini$)' | head -80 || true
+          echo '=== ANR 2.0 README ==='
+          unzip -p anr-fg-V.B19-addon.zip README.txt | head -200
+          echo '=== ANR FG config ==='
+          unzip -p anr-fg-V.B19-addon.zip "Apex Neural Rendering FG/dlssg/nr_fg.ini" | head -200
+          echo '=== ANR FG package ==='
+          unzip -p anr-fg-V.B19-addon.zip nr_fg_package.json | head -140
+          echo '=== ANR FG multiplier documentation search ==='
+          unzip -p anr-fg-V.B19-addon.zip README.txt | grep -inE 'multipl|multi.?frame|x2|x3|x4|x5|x6|live|hot.?key|dynamic' || true
           echo '=== INSTALL CHECKS ==='
-          unzip -t anr-fg-V.B18-addon.zip | tail -2
+          unzip -t anr-fg-V.B19-addon.zip | tail -2
