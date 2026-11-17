@@ -8,6 +8,9 @@ files={
     "dx":root/"OptiScaler/menu/menu_overlay_dx.cpp",
     "bridge":root/"OptiScaler/menu/SDHLiveBridge.inc",
     "config":root/"OptiScaler/Config.h",
+    "feature":root/"OptiScaler/upscalers/IFeature.h",
+    "dx12ffx":root/"OptiScaler/upscalers/ffx/FFXFeature_Dx12.h",
+    "vkffx":root/"OptiScaler/upscalers/ffx/FFXFeature_Vk.h",
 }
 data={k:p.read_text(encoding="utf-8") for k,p in files.items()}
 checks={
@@ -16,10 +19,14 @@ checks={
 "bridge":["SDHQueueBridge","SDHPluginApiV2","OptiPluginInit","SdhLiveRenderTick",
           "fsr4_model","has_fsr4_model","FSR4Model::INT8","FSR4Model::INT8_2","FSR4Model::INT8Lite",
           "invalid_or_forbidden_fsr4_model","renderer_reinit_requested","SDHLiveTick(uint32_t source)",
+          "active_custom_upscaler",
           "has_anr_multiplier","FGDLSSGOverrideInterpolationCount",
           "CustomProviders::NameSetting","SdhChooseFfxVersion",
           "anr_streamline_options_reapplied","StreamlineHooks::updateDlssgOptions"],
 "config":["Fsr4Model"],
+"feature":["SdhActiveCustomUpscaler"],
+"dx12ffx":["SdhActiveCustomUpscaler() const override"],
+"vkffx":["SdhActiveCustomUpscaler() const override"],
 }
 for k,needles in checks.items():
     for n in needles:
