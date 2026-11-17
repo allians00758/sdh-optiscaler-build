@@ -30,7 +30,6 @@ new='''            // Preserve the game's own plugins as an explicit fallback if
             // provided no pathsToPlugins. The game's sl.dlss.dll is often NOT
             // shipped with the Scaler Streamline SDK; do not copy it or hide
             // it by substituting only the new directory.
-            std::wstring gamePluginsDir;
             if (storage.empty() && !pluginsDir.empty())
             {
                 gamePluginsDir = pluginsDir.wstring();
@@ -50,5 +49,16 @@ new='''            // Preserve the game's own plugins as an explicit fallback if
             }'''
 if s.count(old)!=1:raise SystemExit(f"Unexpected Streamline hkslInit source: {s.count(old)} matches")
 s=s.replace(old,new,1)
+# The path array is consumed in o_slInit AFTER the replacement if-block.
+# The backing string must outlive the entire enclosing hkslInit call.
+from_anchor='''    auto localSlPathStr = localSlPath.wstring();
+
+    std::vector<const wchar_t*> storage;'''
+to_anchor='''    auto localSlPathStr = localSlPath.wstring();
+    std::wstring gamePluginsDir; // lifetime spans the original slInit call
+
+    std::vector<const wchar_t*> storage;'''
+if s.count(from_anchor)!=1:raise SystemExit("Streamline path lifetime marker changed")
+s=s.replace(from_anchor,to_anchor,1)
 p.write_text(s,encoding="utf-8")
 print("PASS: preserve original Streamline game plugins directory without copying proprietary game DLL")
