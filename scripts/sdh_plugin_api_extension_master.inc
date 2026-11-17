@@ -133,6 +133,8 @@ static std::string SdhFfxVersionNumber(const char* raw) {
 static bool SdhChooseFfxVersion(const State& state, API api, std::string requested, int& selected) {
     // No fixed memory signatures: query the live FFX version list provided by OptiScaler.
     const auto& versions=(api==Vulkan)?state.ffxUpscalerVersionsVk:state.ffxUpscalerVersionsDx12;
+    const bool wantsDriver=!requested.empty() && requested.back()=='*';
+    if(wantsDriver)requested.pop_back();
     const bool requestMajor4=requested.rfind("fsr4",0)==0;
     const bool requestMajor3=requested.rfind("fsr3",0)==0;
     const bool requestMajor2=requested.rfind("fsr2.3",0)==0;
@@ -144,6 +146,8 @@ static bool SdhChooseFfxVersion(const State& state, API api, std::string request
         if(!versions.names[i])continue;
         std::string item=SdhFfxVersionNumber(versions.names[i]);
         if(item.rfind(version,0)!=0)continue;
+        const bool driver=std::string(versions.names[i]).find('*')!=std::string::npos;
+        if(requested=="fsr4.1.2" && driver!=wantsDriver)continue;
         // Prefer highest reported version for an unqualified request.
         if(selected<0 || item>best) { selected=static_cast<int>(i);best=item; }
     }
@@ -260,6 +264,7 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
     Upscaler backend=Upscaler::Reset;
     int ffxVersion=-1;
     bool ffxSpecified=false;
+    std::string sdhCustomName;
     auto& state=State::Instance();
     if(hasBackend) {
         auto code=SdhLower(SdhFirst(vals,{"backend","upscaler","upscaler_backend",
@@ -296,7 +301,24 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
         const bool isVersionedFfx=(code.rfind("fsr4",0)==0 ||
                                    code.rfind("fsr3",0)==0 ||
                                    code.rfind("fsr2.3",0)==0);
-        if(isVersionedFfx) {
+        if(code.rfind("custom:",0)==0) {
+            const auto requestedName=code.substr(7);
+            if(requestedName.empty() || requestedName.size()>80 ||
+               !std::all_of(requestedName.begin(),requestedName.end(),
+                    [](unsigned char c){return std::isalnum(c) || c=='-' || c=='_' || c=='.';}))
+                return "ok=0\nerror=invalid_custom_upscaler_name\n";
+            for(const auto kind : {CustomProviders::Kind::Ffx, CustomProviders::Kind::FfxVk,
+                                   CustomProviders::Kind::Dlss}) {
+                for(const auto& available : CustomProviders::List(kind)) {
+                    if(SdhLower(available)==requestedName) {sdhCustomName=available;break;}
+                }
+                if(!sdhCustomName.empty())break;
+            }
+            if(sdhCustomName.empty())return "ok=0\nerror=custom_upscaler_unavailable\n";
+            const auto candidates=CustomProviders::Upscalers(sdhCustomName,state.api);
+            if(candidates.empty())return "ok=0\nerror=custom_upscaler_wrong_api\n";
+            backend=candidates.front();
+        } else if(isVersionedFfx) {
             // OptiScaler loads the FFX SDK's version list lazily when its
             // menu first opens. Without the menu the list is empty when
             // switching *from XeSS/FSR22/DLSS*, although 2.3.4, 3.1.5 and
@@ -321,7 +343,8 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
         }
         if(backend==Upscaler::Reset || !SdhBackendAllowed(backend,state.api))
             return "ok=0\nerror=invalid_or_unsupported_backend\n";
-        if((backend==Upscaler::DLSS || backend==Upscaler::DLSS_on12) &&
+        if(sdhCustomName.empty() &&
+           (backend==Upscaler::DLSS || backend==Upscaler::DLSS_on12) &&
            !state.NVNGX_DLSS_Path.has_value())
             return "ok=0\nerror=dlss_binary_unavailable\n";
         if(!state.currentFeature || state.changeBackend.empty())
@@ -431,6 +454,8 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
         else cfg->Fsr4Preset=static_cast<uint32_t>(fsr4Preset);
     }
     if(hasBackend){
+        if(!sdhCustomName.empty())CustomProviders::NameSetting(state.api)=sdhCustomName;
+        else CustomProviders::NameSetting(state.api).reset();
         if(ffxSpecified)cfg->FfxUpscalerIndex=ffxVersion;
         if(state.api==DX12)cfg->Dx12Upscaler=backend;
         else if(state.api==DX11)cfg->Dx11Upscaler=backend;
@@ -535,6 +560,7 @@ static void SdhLiveRenderTick(uint32_t source){
                  cfg->SharpnessShader.value_or_default()==SharpenShader::DepthAware?"da":"lcda") :
                 "default")+"\n";
             auto& state=State::Instance();
+            snapshot+="selected_custom_upscaler="+CustomProviders::NameSetting(state.api).value_or("")+"\n";
             snapshot+="active_backend="+(state.currentFeature ?
                 UpscalerToCode(state.currentFeature->GetUpscalerType()):std::string("none"))+"\n";
             // Read the actual instantiated FFX version, not the requested
