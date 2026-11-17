@@ -7,6 +7,7 @@ on:
       - .github/workflows/build-sdh-helixsr-live.yml
       - scripts/patch_helixsr_live231.py
       - scripts/patch_helixsr_upscalers231.py
+      - scripts/patch_helixsr_hlxfull231.py
       - scripts/patch_helixsr_streamline231.py
       - scripts/verify_helixsr_live231.py
       - scripts/patch_optiscaler_plugin_api.py
@@ -50,6 +51,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "HelixSR FG adaptation failed" }
           python scripts/patch_helixsr_upscalers231.py upstream
           if ($LASTEXITCODE -ne 0) { throw "HelixSR adaptation failed" }
+          python scripts/patch_helixsr_hlxfull231.py upstream
+          if ($LASTEXITCODE -ne 0) { throw "HLX FSR 4 Full native live patch failed" }
           python scripts/patch_helixsr_streamline231.py upstream
           if ($LASTEXITCODE -ne 0) { throw "HelixSR Streamline game plugin fallback failed" }
           python scripts/verify_helixsr_live231.py upstream
