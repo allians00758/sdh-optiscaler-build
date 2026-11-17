@@ -15,7 +15,10 @@ checks={
 "dx":["extern void SDHLiveTick","SDHLiveTick(1);"],
 "bridge":["SDHQueueBridge","SDHPluginApiV2","OptiPluginInit","SdhLiveRenderTick",
           "fsr4_model","has_fsr4_model","FSR4Model::INT8","FSR4Model::INT8_2","FSR4Model::INT8Lite",
-          "invalid_or_forbidden_fsr4_model","renderer_reinit_requested","SDHLiveTick(uint32_t source)"],
+          "invalid_or_forbidden_fsr4_model","renderer_reinit_requested","SDHLiveTick(uint32_t source)",
+          "has_anr_multiplier","FGDLSSGOverrideInterpolationCount",
+          "CustomProviders::NameSetting","SdhChooseFfxVersion",
+          "anr_streamline_options_reapplied","StreamlineHooks::updateDlssgOptions"],
 "config":["Fsr4Model"],
 }
 for k,needles in checks.items():
