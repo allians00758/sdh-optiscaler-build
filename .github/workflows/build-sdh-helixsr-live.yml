@@ -7,6 +7,7 @@ on:
       - .github/workflows/build-sdh-helixsr-live.yml
       - scripts/patch_helixsr_live231.py
       - scripts/patch_helixsr_upscalers231.py
+      - scripts/verify_helixsr_live231.py
       - scripts/patch_optiscaler_plugin_api.py
       - scripts/sdh_plugin_api_extension.inc
       - scripts/verify_integration.py
@@ -32,12 +33,12 @@ jobs:
       - name: Checkout official HelixSR-Scaler 2.3.1 sources
         run: |
           $ErrorActionPreference='Stop'
-          git clone --recurse-submodules --branch v2.3.1 https://github.com/lonewolf0622/HelixSR-Scaler.git upstream
+          git clone --depth 1 --branch v2.3.1 https://github.com/lonewolf0622/HelixSR-Scaler.git upstream
           if ($LASTEXITCODE -ne 0) { throw "Cannot clone HelixSR-Scaler" }
           $pin="c022c8d024c8177d3799ba1bb51dabcf0100d854"
           $actual=(git -C upstream rev-parse HEAD).Trim()
           if ($actual -ne $pin) { throw "Source tag changed: $actual" }
-          git -C upstream submodule update --init --recursive
+          git -C upstream submodule update --init --recursive --depth 1
           if ($LASTEXITCODE -ne 0) { throw "Submodule checkout failed" }
 
       - name: Apply original SDH Live API v2 and HelixSR 2.3.1 adaptation
@@ -48,7 +49,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "HelixSR FG adaptation failed" }
           python scripts/patch_helixsr_upscalers231.py upstream
           if ($LASTEXITCODE -ne 0) { throw "HelixSR adaptation failed" }
-          python scripts/verify_integration.py upstream
+          python scripts/verify_helixsr_live231.py upstream
           if ($LASTEXITCODE -ne 0) { throw "SDH v2 source verification failed" }
 
       - uses: microsoft/setup-msbuild@v2
