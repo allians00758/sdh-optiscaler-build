@@ -1,7 +1,7 @@
-name: SDH MAKO 5.0.0 Renderer — keep FG active in Steam/Decky menu
+name: SDH MAKO 5.0.0 Renderer — force FIFO / no menu pause
 on:
   push:
-    branches: [dev58-mako50-fifo-no-menu-suspend]
+    branches: [dev60-mako50-force-fifo]
     paths:
       - 'scripts/patch_mako50_menu_focus.py'
       - '.github/workflows/build-sdh-mako50.yml'
@@ -29,7 +29,7 @@ jobs:
         run: |
           git clone --depth 1 --recurse-submodules --branch render-v5.0.0 https://github.com/eugeniosegala/MAKO.git upstream
           git -C upstream rev-parse HEAD | tee upstream-SHA.txt
-      - name: Apply and verify SDH no-menu-suspend patch
+      - name: Apply and verify SDH strict FIFO + no-menu patch
         run: |
           python3 scripts/patch_mako50_menu_focus.py upstream
           python3 - <<'PY'
@@ -38,7 +38,13 @@ jobs:
           assert p.count('const bool suspended = false;') == 1
           assert 'const bool suspended = eligible && focused == false;' not in p
           assert 'this->steamMenuSuspended = suspended;' in p
-          print('PASS MAKO source focus policy')
+          c=Path('upstream/engine/mako-render/src/swapchain/create.cpp').read_text()
+          p=Path('upstream/engine/mako-render/src/swapchain/create_policy.hpp').read_text()
+          assert 'if (frameGenerationProvisioned && createInfo.presentMode != VK_PRESENT_MODE_FIFO_KHR)' in c
+          assert p.count('.lowerPresentMode = VK_PRESENT_MODE_FIFO_KHR') == 1
+          assert '.lowerPresentMode = VK_PRESENT_MODE_MAILBOX_KHR' not in p
+          assert '.compositorPresentMode = gamescopeScalingSurface' in p
+          print('PASS MAKO source focus + strict FIFO policy')
           PY
       - name: Compile Linux 64-bit and 32-bit Vulkan layers
         working-directory: upstream/engine
@@ -55,12 +61,12 @@ jobs:
           install -D upstream/engine/build/steamos-dev-32/mako-render/libmako-render.so out/lib32/libmako-render.so
           file out/lib/libmako-render.so out/lib32/libmako-render.so | tee out/BUILD-INFO.txt
           sha256sum out/lib/libmako-render.so out/lib32/libmako-render.so | tee -a out/BUILD-INFO.txt
-          printf '%s\n' "MAKO 5.0.0 render-v5.0.0 + SDH focus patch (no Steam/Decky menu FG pause)" >> out/BUILD-INFO.txt
+          printf '%s\n' "MAKO 5.0.0 render-v5.0.0 + SDH strict FIFO and focus patches" >> out/BUILD-INFO.txt
           printf '%s\n' "Test on Steam Deck before integration; replace neither Flatpak extensions nor installed libraries automatically." >> out/BUILD-INFO.txt
       - name: Upload isolated test artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SDH-MAKO-5.0.0-No-Menu-Suspend-${{ github.sha }}
+          name: SDH-MAKO-5.0.0-Strict-FIFO-${{ github.sha }}
           path: out/
           retention-days: 30
           if-no-files-found: error
