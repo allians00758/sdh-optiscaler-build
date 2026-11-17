@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/build-sdh-helixsr-live.yml
       - scripts/patch_helixsr_live231.py
+      - scripts/patch_helixsr_upscalers231.py
       - scripts/patch_optiscaler_plugin_api.py
       - scripts/sdh_plugin_api_extension.inc
       - scripts/verify_integration.py
@@ -44,6 +45,8 @@ jobs:
           python scripts/run_base_helixsr231.py upstream
           if ($LASTEXITCODE -ne 0) { throw "Base SDH Live patch failed" }
           python scripts/patch_helixsr_live231.py upstream
+          if ($LASTEXITCODE -ne 0) { throw "HelixSR FG adaptation failed" }
+          python scripts/patch_helixsr_upscalers231.py upstream
           if ($LASTEXITCODE -ne 0) { throw "HelixSR adaptation failed" }
           python scripts/verify_integration.py upstream
           if ($LASTEXITCODE -ne 0) { throw "SDH v2 source verification failed" }
