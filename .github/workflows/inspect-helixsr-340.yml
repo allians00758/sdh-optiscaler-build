@@ -52,7 +52,7 @@ jobs:
           python3 - <<'PY'
           import zipfile, pathlib
           z=zipfile.ZipFile('HelixSR-3.4.0.zip')
-          wanted=['helixsr-setup.sh','setup/helixsr_setup.py','setup/helixsr_install.py','setup/fg/fg_setup.py',
+          wanted=['helixsr-setup.sh','setup/helixsr_setup.py','setup/helixsr_install.py',
                   'HelixSR/helixsr.ini','helixsr-scaler/OptiScaler.ini',
                   'helixsr-scaler/OptiScaler/custom/HLX FSR 4 Full/ffx/hlx_fsr4.ini',
                   'helixsr-scaler/OptiScaler/custom/HelixSR-FG/dlssg/helixsr.ini']
@@ -62,7 +62,7 @@ jobs:
               out=pathlib.Path('out')/name
               out.parent.mkdir(parents=True,exist_ok=True)
               out.write_bytes(z.read(original))
-          print('extracted text configs', len(wanted))
+          print('FG_SETUP_RELATED', [n for n in z.namelist() if '/fg/' in n.lower() or 'fg_setup' in n.lower() or 'framegen' in n.lower() or 'nvngx' in n.lower()])\n          print('extracted text configs', len(wanted))
           PY
       - uses: actions/upload-artifact@v4
         with:
