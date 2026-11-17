@@ -28,7 +28,7 @@ b='backend=(state.api==DX11 || (state.api==Vulkan && !usesVulkanFFX))?'
 if base.count(a)!=1:raise SystemExit("Unknown SDH verify_integration.py backend anchor")
 base=base.replace(a,b,1)
 a='if(isVersionedFfx) {'
-b='if(wantsHlx || isVersionedFfx) {'
+b='if((wantsHlx && !CustomProviders::IsFfx("HLX FSR 4 Full")) || isVersionedFfx) {'
 if base.count(a)!=1:raise SystemExit("Unknown SDH verify_integration.py FFX anchor")
 base=base.replace(a,b,1)
 exec(compile(base,"verify_integration.py","exec"),{"__name__":"__main__","__file__":str(Path(__file__).parent/"verify_integration.py")})
