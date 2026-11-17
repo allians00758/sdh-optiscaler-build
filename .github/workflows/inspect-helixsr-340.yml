@@ -46,3 +46,26 @@ jobs:
           print("INSTALLER_NAMES",[n for n in names if n.endswith("helixsr_install.py") or n.endswith("helixsr_setup.py")])
           print("SAFETY", "OK" if z.testzip() is None else "CORRUPT")
           PY
+      - name: Export installer/config sources as small test artifact
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import zipfile, pathlib
+          z=zipfile.ZipFile('HelixSR-3.4.0.zip')
+          wanted=['helixsr-setup.sh','setup/helixsr_setup.py','setup/helixsr_install.py',
+                  'HelixSR/helixsr.ini','helixsr-scaler/OptiScaler.ini',
+                  'helixsr-scaler/OptiScaler/custom/HLX FSR 4 Full/ffx/hlx_fsr4.ini',
+                  'helixsr-scaler/OptiScaler/custom/HelixSR-FG/dlssg/helixsr.ini']
+          for name in wanted:
+              original='HelixSR-3.4.0/'+name
+              if original not in z.namelist(): raise ValueError('missing '+original)
+              out=pathlib.Path('out')/name
+              out.parent.mkdir(parents=True,exist_ok=True)
+              out.write_bytes(z.read(original))
+          print('extracted text configs', len(wanted))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HelixSR-340-Source-Inspection
+          path: out/
+          if-no-files-found: error
