@@ -27,9 +27,11 @@ a='backend=(state.api==DX11)?Upscaler::FFX_on12:Upscaler::FFX'
 b='backend=(state.api==DX11 || (state.api==Vulkan && !usesVulkanFFX))?'
 if base.count(a)!=1:raise SystemExit("Unknown SDH verify_integration.py backend anchor")
 base=base.replace(a,b,1)
-a='if(isVersionedFfx) {'
-b='if((wantsHlx && !CustomProviders::IsFfx("HLX FSR 4 Full")) ||\n           (wantsHlxStandard && state.api!=Vulkan) || isVersionedFfx) {'
-if base.count(a)!=1:raise SystemExit("Unknown SDH verify_integration.py FFX anchor")
-base=base.replace(a,b,1)
+# The upstream verifier used a single-line 'if' anchor. The HelixSR fork
+# has two native paths and an additional custom provider branch.
+old="start = p.index('if(isVersionedFfx) {')\npreflight = p[start:p.index('if(!SdhChooseFfxVersion(', start)]"
+new="start = p.index('const bool isVersionedFfx=')\npreflight = p[start:p.index('const bool wantsFsr4Space=', start)]"
+if base.count(old)!=1:raise SystemExit("Unknown SDH verify_integration.py preflight anchors")
+base=base.replace(old,new,1)
 exec(compile(base,"verify_integration.py","exec"),{"__name__":"__main__","__file__":str(Path(__file__).parent/"verify_integration.py")})
 print("PASS: HelixSR 2.3.1 DX12/Vulkan FFX / HLX native command bindings verified")
