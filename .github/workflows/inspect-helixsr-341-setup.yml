@@ -39,7 +39,7 @@ jobs:
               print('FSRFG PATHS:', [n for n in names if 'helixsr-fsrfg' in n.lower()][:55])
               for name in names:
                   base=name.rsplit('/',1)[-1]
-                  if base in ('helixsr-setup.sh','helixsr_setup.py','helixsr_install.py','helixsr_prepare.py','fg_setup.py'):
+                  if base in ('helixsr-setup.sh','helixsr_setup.py','helixsr_install.py','helixsr_prepare.py','fg_setup.py','hlx_fsr4.ini'):
                       data=z.read(name)
                       if len(data)<2000000:
                           p=out/(name.replace('/','__'))
