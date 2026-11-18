@@ -16,8 +16,8 @@ def once(src,old,new,name):
     return src.replace(old,new,1)
 
 s=once(s,
-'    bool chooseHlxFull=false;\n    auto& state=State::Instance();',
-'    bool chooseHlxFull=false;\n    bool chooseHlxVk=false;\n    auto& state=State::Instance();',
+'    bool chooseHlxFull=false;\\n    auto& state=State::Instance();',
+'    bool chooseHlxFull=false;\\n    bool chooseHlxVk=false;\\n    auto& state=State::Instance();',
 'state intent flags')
 s=once(s,
 '        const bool wantsHlx=(norm=="helixsr" || norm=="hlxffx" || norm=="hlxfsr4");',
@@ -32,7 +32,7 @@ s=once(s,
            (wantsHlxStandard && state.api!=Vulkan) || isVersionedFfx) {''',
 'FFX table request')
 s=once(s,
-'            if(wantsHlx){\n                if(!HelixSR::FsrDllFound() || !SdhChooseHlxFsr4(state,state.api,ffxVersion))',
+'            if(wantsHlx){\\n                if(!HelixSR::FsrDllFound() || !SdhChooseHlxFsr4(state,state.api,ffxVersion))',
 '''            if(wantsHlx || wantsHlxStandard){
                 if((wantsHlx && !HelixSR::FsrDllFound()) ||
                    !SdhChooseHlxFsr4(state,state.api,ffxVersion))''',
@@ -44,7 +44,7 @@ s=once(s,
             // Official HelixSR 3.4.1: custom/HLX FSR 4/ffx_vk.
             // Never silently substitute the Full DX12 provider.
             if(!CustomProviders::IsFfxVk("HLX FSR 4"))
-                return "ok=0\nerror=hlx_fsr4_vk_provider_unavailable\n";
+                return "ok=0\\nerror=hlx_fsr4_vk_provider_unavailable\\n";
             chooseHlxVk=true;
             backend=Upscaler::FFX;
         } else if(wantsHlx) {
@@ -70,8 +70,8 @@ s=once(s,
                      current.currentFeature->GetUpscalerType()==Upscaler::FFX_on12) &&
                     _stricmp(current.sdhActiveCustomUpscaler.c_str(),"HLX FSR 4 Full")==0;
                 if(customFull) {
-                    snapshot+="active_custom_upscaler=HLX FSR 4 Full\n";
-                    snapshot+="active_helix_upscaler=HLX FSR 4 Full\n";''',
+                    snapshot+="active_custom_upscaler=HLX FSR 4 Full\\n";
+                    snapshot+="active_helix_upscaler=HLX FSR 4 Full\\n";''',
 '''                const bool customFull=
                     (current.currentFeature->GetUpscalerType()==Upscaler::FFX ||
                      current.currentFeature->GetUpscalerType()==Upscaler::FFX_on12) &&
@@ -81,11 +81,11 @@ s=once(s,
                      current.currentFeature->GetUpscalerType()==Upscaler::FFX &&
                      _stricmp(current.sdhActiveCustomUpscaler.c_str(),"HLX FSR 4")==0);
                 if(customVk) {
-                    snapshot+="active_custom_upscaler=HLX FSR 4\n";
-                    snapshot+="active_helix_upscaler=HLX FSR 4\n";
+                    snapshot+="active_custom_upscaler=HLX FSR 4\\n";
+                    snapshot+="active_helix_upscaler=HLX FSR 4\\n";
                 } else if(customFull) {
-                    snapshot+="active_custom_upscaler=HLX FSR 4 Full\n";
-                    snapshot+="active_helix_upscaler=HLX FSR 4 Full\n";''',
+                    snapshot+="active_custom_upscaler=HLX FSR 4 Full\\n";
+                    snapshot+="active_helix_upscaler=HLX FSR 4 Full\\n";''',
 'actual readback')
 v=vk.read_text(encoding='utf8')
 v=once(v,
