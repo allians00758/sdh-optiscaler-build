@@ -65,28 +65,16 @@ s=once(s,
 # Expose both the recognized custom provider and version list; the Renderer
 # itself must report an initialized provider, never just a Config name.
 s=once(s,
-'''                const bool customFull=
-                    (current.currentFeature->GetUpscalerType()==Upscaler::FFX ||
-                     current.currentFeature->GetUpscalerType()==Upscaler::FFX_on12) &&
-                    _stricmp(current.sdhActiveCustomUpscaler.c_str(),"HLX FSR 4 Full")==0;
-                if(customFull) {
-                    snapshot+="active_custom_upscaler=HLX FSR 4 Full\\n";
-                    snapshot+="active_helix_upscaler=HLX FSR 4 Full\\n";''',
-'''                const bool customFull=
-                    (current.currentFeature->GetUpscalerType()==Upscaler::FFX ||
-                     current.currentFeature->GetUpscalerType()==Upscaler::FFX_on12) &&
-                    _stricmp(current.sdhActiveCustomUpscaler.c_str(),"HLX FSR 4 Full")==0;
-                const bool customVk=
+'                if(customFull) {',
+'''                const bool customVk=
                     (current.api==Vulkan &&
                      current.currentFeature->GetUpscalerType()==Upscaler::FFX &&
                      _stricmp(current.sdhActiveCustomUpscaler.c_str(),"HLX FSR 4")==0);
                 if(customVk) {
                     snapshot+="active_custom_upscaler=HLX FSR 4\\n";
                     snapshot+="active_helix_upscaler=HLX FSR 4\\n";
-                } else if(customFull) {
-                    snapshot+="active_custom_upscaler=HLX FSR 4 Full\\n";
-                    snapshot+="active_helix_upscaler=HLX FSR 4 Full\\n";''',
-'actual readback')
+                } else if(customFull) {''',
+'actual Vulkan readback')
 v=vk.read_text(encoding='utf8')
 v=once(v,
 '''    SetInit(true);
