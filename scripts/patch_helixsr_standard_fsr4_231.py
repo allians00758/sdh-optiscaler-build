@@ -16,8 +16,8 @@ def once(src,old,new,name):
     return src.replace(old,new,1)
 
 s=once(s,
-'    bool chooseHlxFull=false;\\n    auto& state=State::Instance();',
-'    bool chooseHlxFull=false;\\n    bool chooseHlxVk=false;\\n    auto& state=State::Instance();',
+'    bool chooseHlxFull=false;\n    auto& state=State::Instance();',
+'    bool chooseHlxFull=false;\n    bool chooseHlxVk=false;\n    auto& state=State::Instance();',
 'state intent flags')
 s=once(s,
 '        const bool wantsHlx=(norm=="helixsr" || norm=="hlxffx" || norm=="hlxfsr4");',
@@ -32,7 +32,7 @@ s=once(s,
            (wantsHlxStandard && state.api!=Vulkan) || isVersionedFfx) {''',
 'FFX table request')
 s=once(s,
-'            if(wantsHlx){\\n                if(!HelixSR::FsrDllFound() || !SdhChooseHlxFsr4(state,state.api,ffxVersion))',
+'            if(wantsHlx){\n                if(!HelixSR::FsrDllFound() || !SdhChooseHlxFsr4(state,state.api,ffxVersion))',
 '''            if(wantsHlx || wantsHlxStandard){
                 if((wantsHlx && !HelixSR::FsrDllFound()) ||
                    !SdhChooseHlxFsr4(state,state.api,ffxVersion))''',
