@@ -130,21 +130,37 @@ static std::string SdhFfxVersionNumber(const char* raw) {
     return name.substr(digit);
 }
 static bool SdhChooseFfxVersion(const State& state, API api, std::string requested, int& selected) {
-    // No fixed memory signatures: query the live FFX version list provided by OptiScaler.
+    // Select from the exact SDK enumerated list, never invent an index.
+    // A qualified "fsr4.1.2" must NOT select the distinct "4.1.2 *" driver
+    // provider, even when the driver entry sorts after the regular SDK one.
     const auto& versions=(api==Vulkan)?state.ffxUpscalerVersionsVk:state.ffxUpscalerVersionsDx12;
     const bool requestMajor4=requested.rfind("fsr4",0)==0;
     const bool requestMajor3=requested.rfind("fsr3",0)==0;
     const bool requestMajor2=requested.rfind("fsr2.3",0)==0;
-    if(!requestMajor4&&!requestMajor3&&!requestMajor2) return false;
-    std::string version=requested.substr(3); // "fsr4.1" => "4.1"
+    if(!requestMajor4&&!requestMajor3&&!requestMajor2)return false;
+    const std::string target=requested.substr(3);
+    const bool exactVersion=(std::count(target.begin(),target.end(),'.')>=2);
     selected=-1;
     std::string best;
     for(size_t i=0;i<versions.names.size();++i) {
         if(!versions.names[i])continue;
-        std::string item=SdhFfxVersionNumber(versions.names[i]);
-        if(item.rfind(version,0)!=0)continue;
-        // Prefer highest reported version for an unqualified request.
-        if(selected<0 || item>best) { selected=static_cast<int>(i);best=item; }
+        const std::string name=SdhLower(versions.names[i]);
+        const std::string rawItem=SdhFfxVersionNumber(versions.names[i]);
+        // Version tags may carry an SDK description after the numeric version.
+        // Keep only the semantic version and distinguish the driver suffix.
+        const auto end=rawItem.find_first_not_of("0123456789.");
+        const std::string item=rawItem.substr(0,end);
+        const bool driver=name.find('*')!=std::string::npos||
+                          name.find("driver")!=std::string::npos;
+        // Never alias SDK FSR 4.1.2 to the * driver provider.
+        if(exactVersion) {
+            if(item!=target || driver)continue;
+            selected=static_cast<int>(i);
+            break;
+        }
+        if(item.rfind(target,0)!=0 || driver)continue;
+        // For shorthand fsr3/fsr4, pick the newest regular SDK version.
+        if(selected<0 || item>best){selected=static_cast<int>(i);best=item;}
     }
     return selected>=0;
 }
@@ -259,6 +275,8 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
     Upscaler backend=Upscaler::Reset;
     int ffxVersion=-1;
     bool ffxSpecified=false;
+    bool customRequested=false;
+    std::string customName;
     auto& state=State::Instance();
     if(hasBackend) {
         auto code=SdhLower(SdhFirst(vals,{"backend","upscaler","upscaler_backend",
@@ -288,6 +306,33 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
         else if(norm=="fsr4" || norm=="fsr40")code="fsr4";
         else if(norm=="fsr3" || norm=="fsr30")code="fsr3";
         if(code.empty()) return "ok=0\nerror=missing_backend\n";
+        if(norm=="ffx315")code="fsr3.1.5";
+        if(norm=="ffx316")code="fsr3.1.6";
+        if(norm=="fsr412" || norm=="ffx412")code="fsr4.1.2";
+        if(norm=="ffx234")code="fsr2.3.4";
+        // Modern OptiScaler stores custom folder names independently of Upscaler::FFX.
+        // This must be resolved before CodeToUpscalerFfx (it knows enum codes only).
+        bool explicitCustom=code.rfind("custom:",0)==0;
+        auto candidate=explicitCustom?code.substr(7):code;
+        const auto& providers=CustomProviders::Scan();
+        auto pickName=[&](const std::vector<std::string>& list)->std::string {
+            for(const auto& name:list)
+                if(_stricmp(name.c_str(),candidate.c_str())==0)return name;
+            return {};
+        };
+        if(state.api==DX12) {
+            if(auto name=pickName(providers.ffx);!name.empty()) {
+                customName=name;customRequested=true;backend=Upscaler::FFX;
+            } else if(auto name=pickName(providers.dlss);!name.empty()) {
+                customName=name;customRequested=true;backend=Upscaler::DLSS;
+            }
+        } else if(state.api==Vulkan) {
+            if(auto name=pickName(providers.ffxVk);!name.empty()) {
+                customName=name;customRequested=true;backend=Upscaler::FFX;
+            }
+        }
+        if(explicitCustom && !customRequested)
+            return "ok=0\nerror=custom_upscaler_unavailable\n";
         // FFX 2.3 must take the *same* version-index path as FFX 3.x/4.x.
         // Previously fsr2.3 fell into CodeToUpscalerFfx("fsr2.3"),
         // returned Reset, and always failed invalid_or_unsupported_backend
@@ -295,7 +340,9 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
         const bool isVersionedFfx=(code.rfind("fsr4",0)==0 ||
                                    code.rfind("fsr3",0)==0 ||
                                    code.rfind("fsr2.3",0)==0);
-        if(isVersionedFfx) {
+        if(customRequested) {
+            // Exact folder name and associated FFX index are independent settings.
+        } else if(isVersionedFfx) {
             // OptiScaler loads the FFX SDK's version list lazily when its
             // menu first opens. Without the menu the list is empty when
             // switching *from XeSS/FSR22/DLSS*, although 2.3.4, 3.1.5 and
@@ -387,7 +434,8 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
     }
     if(SdhFlag(vals,"has_latencyflex_mode")){
         cfg->FN_LatencyFlexMode=latencyMode;
-        state.fakenvapiReloadLowLatency=true;
+        // Modern LatencyFlex detects FN_LatencyFlexMode changes in lfx_begin_frame;
+        // no obsolete State reload flag is needed.
     }
     if(SdhFlag(vals,"has_shader")){
         cfg->RcasEnabled=shaderOn;
@@ -413,7 +461,16 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
         else cfg->Fsr4Preset=static_cast<uint32_t>(fsr4Preset);
     }
     if(hasBackend){
-        if(ffxSpecified)cfg->FfxUpscalerIndex=ffxVersion;
+        // Mirror MenuCommon selection and clear previous custom folder
+        // when returning to the standard FFX SDK backend.
+        if(state.api==DX12) {
+            if(customRequested)cfg->CustomUpscaler=customName;
+            else cfg->CustomUpscaler.reset();
+        } else if(state.api==Vulkan) {
+            if(customRequested)cfg->CustomUpscalerVk=customName;
+            else cfg->CustomUpscalerVk.reset();
+        }
+        if(ffxSpecified)cfg->FfxUpscalerIndexFor(customName)=ffxVersion;
         if(state.api==DX12)cfg->Dx12Upscaler=backend;
         else if(state.api==DX11)cfg->Dx11Upscaler=backend;
         else if(state.api==Vulkan)cfg->VulkanUpscaler=backend;
@@ -479,7 +536,11 @@ static void SdhLiveRenderTick(uint32_t source){
                     snapshot+=version;
                 }
                 snapshot+="\n";
-                snapshot+="ffx_selected_index="+std::to_string(cfg->FfxUpscalerIndex.value_or_default())+"\n";
+                const std::string selectedCustom=(current.api==Vulkan)
+                    ? cfg->CustomUpscalerVk.value_or("")
+                    : (current.api==DX12?cfg->CustomUpscaler.value_or(""):"");
+                snapshot+="ffx_selected_index="+std::to_string(
+                    cfg->FfxUpscalerIndexFor(selectedCustom).value_or_default())+"\n";
                 snapshot+="graphics_api="+std::to_string(static_cast<int>(current.api))+"\n";
             }
 
@@ -516,6 +577,9 @@ static void SdhLiveRenderTick(uint32_t source){
             auto& state=State::Instance();
             snapshot+="active_backend="+(state.currentFeature ?
                 UpscalerToCode(state.currentFeature->GetUpscalerType()):std::string("none"))+"\n";
+            // Actual renderer-owned module, never read from the requested INI.
+            snapshot+="active_custom_upscaler="+(state.currentFeature ?
+                state.currentFeature->GetCustomUpscalerName():std::string())+"\n";
             // Read the actual instantiated FFX version, not the requested
             // Config index. The selected index can change before reinit.
             if(state.currentFeature &&
@@ -527,6 +591,11 @@ static void SdhLiveRenderTick(uint32_t source){
             }
 
             snapshot+="requested_backend="+UpscalerToCode(state.newBackend)+"\n";
+            // A requested custom folder is not proof of a live renderer change.
+            const std::string customName=(state.api==Vulkan)
+                ? cfg->CustomUpscalerVk.value_or("")
+                : (state.api==DX12 ? cfg->CustomUpscaler.value_or("") : "");
+            snapshot+="requested_custom_upscaler="+customName+"\n";
             if(state.currentFeature && (state.currentFeature->GetUpscalerType()==Upscaler::FFX ||
                                         state.currentFeature->GetUpscalerType()==Upscaler::FFX_on12)){
                 const auto& versions=(state.api==Vulkan)?state.ffxUpscalerVersionsVk:state.ffxUpscalerVersionsDx12;
