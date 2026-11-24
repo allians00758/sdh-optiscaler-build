@@ -257,7 +257,7 @@ static std::string SdhApplyOnRenderThread(std::string_view command){
         else if(name=="3" || name=="lcda" || name=="das" ||
                 name=="localcontrastdepthaware" || name=="depthawaredas" ||
                 name=="localcontrast")
-            {shaderOn=true;shader=SharpenShader::LocalContrastDepthAware;}
+            {shaderOn=true;shader=SharpenShader::DepthAwareDAS;}
         else return "ok=0\nerror=invalid_shader\n";
     }
     int anrMultiplier=-1;
@@ -595,7 +595,7 @@ static void SdhLiveRenderTick(uint32_t source){
             snapshot+="active_custom_upscaler="+actualCustom+"\n";
             snapshot+="selected_custom_upscaler="+CustomProviders::NameSetting(state.api).value_or("")+"\n";
             snapshot+="active_backend="+(state.currentFeature ?
-                UpscalerToCode(state.currentFeature->GetUpscalerType()):std::string("none"))+"\n";
+                EnumToCode<Upscaler>(state.currentFeature->GetUpscalerType()):std::string("none"))+"\n";
             // Read the actual instantiated FFX version, not the requested
             // Config index. The selected index can change before reinit.
             if(state.currentFeature &&
@@ -606,7 +606,7 @@ static void SdhLiveRenderTick(uint32_t source){
                     std::to_string(version.minor)+"."+std::to_string(version.patch)+"\n";
             }
 
-            snapshot+="requested_backend="+UpscalerToCode(state.newBackend)+"\n";
+            snapshot+="requested_backend="+EnumToCode<Upscaler>(state.newBackend)+"\n";
             if(state.currentFeature && (state.currentFeature->GetUpscalerType()==Upscaler::FFX ||
                                         state.currentFeature->GetUpscalerType()==Upscaler::FFX_on12)){
                 const auto& versions=(state.api==Vulkan)?state.ffxUpscalerVersionsVk:state.ffxUpscalerVersionsDx12;
