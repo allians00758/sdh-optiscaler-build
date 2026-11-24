@@ -1,7 +1,7 @@
-name: SDH OptiScaler active custom provider Live readback
+name: SDH OptiScaler 20261124 Live API v2 ActiveCustom ANR
 on:
   push:
-    branches: [dev68-optiscaler-custom-active-readback]
+    branches: [dev69-optiscaler-nightly-20261124-live-v2]
   workflow_dispatch:
 permissions:
   contents: read
@@ -19,11 +19,11 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Fetch exact OptiScaler 2026-11-16 source and submodules
+      - name: Fetch pinned official OptiScaler 2026-11-24 source and submodules
         run: |
           git clone --single-branch --branch master https://github.com/optiscaler/OptiScaler.git upstream
           if ($LASTEXITCODE -ne 0) { throw 'Cannot clone OptiScaler' }
-          git -C upstream checkout --detach 1e568bb3df081988416b8aa85fa4efe0b22c58cf
+          git -C upstream checkout --detach 14f8e39ad706a0bac865744a0a7174718d42b7e4
           if ($LASTEXITCODE -ne 0) { throw 'Pinned nightly base SHA not found' }
           git -C upstream submodule update --init --recursive
           if ($LASTEXITCODE -ne 0) { throw 'Cannot initialize submodules' }
@@ -47,22 +47,23 @@ jobs:
           if (!(Test-Path -LiteralPath $dll)) { throw "Compiled DLL missing: $dll" }
           New-Item -ItemType Directory -Force out | Out-Null
           Copy-Item $dll out/dxgi.dll
-          Copy-Item asi/sdh-optiscaler-control.asi out/sdh-optiscaler-control-legacy.asi
+          $bytes=[System.IO.File]::ReadAllBytes((Resolve-Path 'out/dxgi.dll'))
+          if ($bytes.Length -lt 1000000 -or $bytes[0] -ne 77 -or $bytes[1] -ne 90) { throw 'Invalid PE dll' }
           @"
           SDH Live API v2 experimental DLL for OptiScaler 10.0.0-pre1
-          OptiScaler source: 1e568bb3df081988416b8aa85fa4efe0b22c58cf
-          Nightly reference: nightly-20261116
+          OptiScaler source: 14f8e39ad706a0bac865744a0a7174718d42b7e4
+          Nightly reference: nightly-20261124
           Target: Windows x64 (Steam Deck through Proton)
-          Includes FSR4 Model Auto, INT8, INT8 RDNA2, INT8 Lite.
+          Includes ActiveCustom readback + ANR FG multiplier Live v2 + FSR4 model commands.
           FP8 is disallowed by SDH Steam Deck live-control.
           BINARY NOT VALIDATED ON STEAM DECK. Do not replace working files without backup.
-          Companion ASI in this artifact is legacy repository version; prefer current SDH FrameGen companion from DEV84.
+          This artifact contains dxgi.dll ONLY. Retain current SDH companion ASI.
           "@ | Set-Content out/BUILD-INFO.txt
           Get-FileHash out/dxgi.dll -Algorithm SHA256 | Out-String | Add-Content out/BUILD-INFO.txt
       - name: Upload unsigned test artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: SDH-OptiScaler10-ActiveCustom-LiveAPI-v2-${{ github.sha }}
+          name: SDH-OptiScaler10-Nightly20261124-ActiveCustom-ANR-LiveAPI-v2-${{ github.sha }}
           path: out/
           retention-days: 14
           if-no-files-found: error
